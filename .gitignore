@@ -1,0 +1,20 @@
+# Java
+mcp-task-service/target/
+*.class
+
+# Python generated files
+__pycache__/
+*.pyc
+tasks_1000.json
+
+# Env / local data
+.env
+agent-garage/**/.env
+agent-garage/**/logs/
+agent-garage/**/data/
+agent-garage/**/volumes/
+
+# IDE
+.vscode/
+.history/
+.DS_Store

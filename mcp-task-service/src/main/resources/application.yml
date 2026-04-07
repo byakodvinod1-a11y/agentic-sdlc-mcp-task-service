@@ -1,0 +1,13 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/taskdb
+    username: app
+    password: app
+    driver-class-name: org.postgresql.Driver
+
+logging:
+  level:
+    root: INFO

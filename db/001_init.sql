@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS tasks (
+    id BIGSERIAL PRIMARY KEY,
+    title VARCHAR(140) NOT NULL,
+    description TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+    priority VARCHAR(10) NOT NULL DEFAULT 'MEDIUM',
+    due_date DATE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);

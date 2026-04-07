@@ -1,0 +1,242 @@
+{
+  "name": "4 Technical Architecture Analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "architecture-analysis",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        64,
+        144
+      ],
+      "webhookId": "f4aaedf2-bd4d-42bd-b378-d787347f517c",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analyze this technical architecture diagram or sketch in detail. Identify all components, services, connections, and data flows.\n\nProvide a comprehensive description that includes:\n- All system components and their purposes\n- Connections and communication patterns between components\n- Data flows and their directions\n- Any visible technologies, protocols, or standards\n- Overall architecture pattern (microservices, monolith, serverless, etc.)\n\nThe image is passed through:\n{{ $input }}",
+        "options": {
+          "systemMessage": "You are an expert software architect with deep knowledge of system design patterns, cloud architectures, microservices, databases, and modern software development practices. Analyze technical architecture diagrams and provide detailed, accurate descriptions of all components and their relationships.",
+          "passthroughBinaryImages": true
+        }
+      },
+      "id": "agent-architecture-understanding",
+      "name": "AI Agent - Architecture Understanding",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        256,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "model": "qwen3-vl:8b",
+        "options": {}
+      },
+      "id": "ollama-visual",
+      "name": "Ollama Visual",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        336
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "arch-understanding"
+      },
+      "id": "memory-understanding",
+      "name": "Memory - Understanding",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -80,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Based on this technical architecture understanding:\n\n{{ $('AI Agent - Architecture Understanding').item.json.output }}\n\nCreate a comprehensive explanation and implementation plan in Markdown format with the following sections:\n\n# Architecture Overview\nProvide a clear, high-level explanation of the architecture.\n\n# Tech Stack Recommendations\nRecommend specific technologies, frameworks, and tools for each component.\n\n# Data Model\nDefine the data model including entities, relationships, and key attributes (if applicable to this architecture).\n\n# Local Setup\nProvide step-by-step instructions for setting up the development environment locally.\n\n# Security Considerations\nIdentify security concerns and recommend best practices for this architecture.\n\n# Deployment Steps\nProvide a deployment strategy and step-by-step deployment instructions.\n\nUse proper Markdown formatting with headers, bullet points, code blocks, and emphasis where appropriate.",
+        "options": {
+          "systemMessage": "You are an expert software architect and technical writer. Create clear, actionable implementation plans with specific recommendations. Use proper Markdown formatting to make the output well-structured and readable. Provide practical, real-world advice based on industry best practices."
+        }
+      },
+      "id": "agent-implementation-plan",
+      "name": "AI Agent - Implementation Plan",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        608,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "ollama-text",
+      "name": "Ollama Text",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        336,
+        624
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "arch-planning"
+      },
+      "id": "memory-planning",
+      "name": "Memory - Planning",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        480,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $('AI Agent - Implementation Plan').item.json.output }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/markdown; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        976,
+        320
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Architecture Understanding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Architecture Understanding": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Implementation Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Visual": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Architecture Understanding",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memory - Understanding": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent - Architecture Understanding",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Implementation Plan": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Text": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Implementation Plan",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memory - Planning": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent - Implementation Plan",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "bd7026fb-8991-4e75-8511-93cf77316573",
+  "meta": {
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "KSMDIUAOgYu8zlOR",
+  "tags": []
+}

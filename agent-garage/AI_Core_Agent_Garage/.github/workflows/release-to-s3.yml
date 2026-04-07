@@ -1,0 +1,46 @@
+# Workflow: Archive and Upload Release to S3
+#
+# Triggers on new GitHub release publications.
+# Zips the full repository contents as AI_Core_Agent_Garage.zip and uploads
+# the archive to the configured AWS S3 bucket.
+#
+# Required repository secrets:
+#   AWS_ACCESS_KEY_ID      - AWS access key with S3 write permissions
+#   AWS_SECRET_ACCESS_KEY  - Corresponding AWS secret access key
+#   AWS_DEFAULT_REGION     - AWS region where the S3 bucket resides (e.g. us-east-1)
+#   S3_BUCKET_NAME         - Name of the target S3 bucket
+
+name: Archive and Upload Release to S3
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  archive-and-upload:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create release archive
+        run: |
+          zip -r AI_Core_Agent_Garage.zip . \
+            --exclude ".git/*"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      - name: Upload archive to S3
+        run: |
+          aws s3 cp AI_Core_Agent_Garage.zip \
+            s3://${{ secrets.S3_BUCKET_NAME }}/AI_Core_Agent_Garage.zip
