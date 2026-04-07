@@ -126,7 +126,7 @@ Build a minimal MCP-compatible service that allows an AI agent to:
 | `/mcp/tasks` | POST | Inserts task records |
 | `/mcp/tasks/summary` | GET | Returns task statistics by status |
 
-## Example MCP Calls
+## MCP Endpoint Usage
 
 ### Help
 ```bash
@@ -299,7 +299,7 @@ It takes a webhook request, asks the local LLM to generate tasks, parses them, i
 
 ---
 
-# 9. Example Agent Trigger
+# 9. Agent Execution
 
 Once the webhook workflow is active, trigger it with:
 
@@ -357,7 +357,7 @@ docker-compose exec postgres psql -U app -d taskdb -c "SELECT COUNT(*) FROM task
 - Inserted through MCP-compatible API
 - Generated through AI-assisted workflow
 
- Final summary structure:
+ Final summary Output:
 
 ```json
 {
@@ -406,17 +406,49 @@ docker-compose exec postgres psql -U app -d taskdb -c "SELECT COUNT(*) FROM task
 - Some parser normalization was added to handle non-perfect LLM JSON formatting.
 
 ---
+# 14. Sample Agent Prompt
 
-# 14. Author
+The following prompt was used by the AI agent:
+
+"Please inspect the task schema at /mcp/schema/tasks. Then generate and insert 1000 diverse tasks with random statuses, titles, and due dates using the /mcp/tasks endpoint."
+
+The agent workflow performed the following steps:
+
+1. Inspect schema using `/mcp/schema/tasks`
+2. Generate realistic SDLC task data
+3. Insert tasks using `/mcp/tasks`
+4. Validate results using `/mcp/tasks/summary`
+
+This confirms end-to-end AI-driven task generation and database insertion.
+
+---
+# 15. Screenshots
+
+## 15.1. Agentic SDLC Workflow
+   ![Agentic SDLC Workflow](image-1.png)
+
+## 15.2. AI Task Generator (MCP)
+   ![AI Task Generator (MCP)](image.png)
+
+## 15.3. Tasks Summary
+ 
+ curl http://localhost:8080/mcp/tasks/summary
+ 
+{
+  "total": 1000,
+  "byStatus": {
+    "OPEN": 344,
+    "IN_PROGRESS": 236,
+    "DONE": 199,
+    "BLOCKED": 221
+  }
+}
+ 
+ ![![Task Summmary](image-3.png)](image-2.png)
+  
+---  
+# 16. Author
 
 **Vinod Byakod**
 
 ---
-
-# 15. Screenshots
- # 15.1. Agentic SDLC Workflow
-   ![Agentic SDLC Workflow](image-1.png)
-
- # 15.2. AI Task Generator (MCP)
-   ![AI Task Generator (MCP)](image.png)
- 
