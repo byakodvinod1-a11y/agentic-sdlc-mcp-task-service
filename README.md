@@ -306,21 +306,8 @@ Once the webhook workflow is active, trigger it with:
 ```bash
 curl -X POST http://localhost:5678/webhook/agent/tasks \
   -H "Content-Type: application/json" \
-  -d '{"batchCount":10,"batchSize":10}'
+  -d '{"batchCount":100,"batchSize":10}'
 ```
-
-Example purpose:
-
-- `batchCount = 10`
-- `batchSize = 10`
-
-Target generation:
-
-```text
-10 × 10 = 100 tasks
-```
-
-This request can be repeated or adjusted to reach the required dataset size.
 
 ---
 
