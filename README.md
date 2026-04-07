@@ -357,7 +357,7 @@ docker-compose exec postgres psql -U app -d taskdb -c "SELECT COUNT(*) FROM task
 - Inserted through MCP-compatible API
 - Generated through AI-assisted workflow
 
-Example final summary structure:
+ Final summary structure:
 
 ```json
 {
