@@ -426,6 +426,10 @@ Example final summary structure:
 
 ---
 
-# 15. Status
+# 15. Screenshots
+ # 15.1. Agentic SDLC Workflow
+   ![Agentic SDLC Workflow](image-1.png)
 
-✅ Assignment Complete
+ # 15.2. AI Task Generator (MCP)
+   ![AI Task Generator (MCP)](image.png)
+ 
