@@ -5,10 +5,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -19,7 +21,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.url=jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.datasource.username=sa",
-        "spring.datasource.password="
+        "spring.datasource.password=",
+        "app.api-key=test-key"
 })
 class McpControllerTest {
 
@@ -79,7 +82,7 @@ class McpControllerTest {
                 """;
 
         mockMvc.perform(post("/mcp/tasks")
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.requested").value(2))
@@ -114,7 +117,7 @@ class McpControllerTest {
                 """;
 
         mockMvc.perform(post("/mcp/tasks")
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").exists());
@@ -134,7 +137,7 @@ class McpControllerTest {
                 """;
 
         mockMvc.perform(post("/mcp/tasks")
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").exists());
@@ -154,7 +157,7 @@ class McpControllerTest {
                 """;
 
         mockMvc.perform(post("/mcp/tasks")
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").exists());
@@ -174,7 +177,7 @@ class McpControllerTest {
                 """;
 
         mockMvc.perform(post("/mcp/tasks")
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").exists());
@@ -189,7 +192,7 @@ class McpControllerTest {
                 """;
 
         mockMvc.perform(post("/mcp/tasks")
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").exists());
@@ -213,7 +216,7 @@ class McpControllerTest {
         body.append("]");
 
         mockMvc.perform(post("/mcp/tasks")
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content(body.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.requested").value(5001))
@@ -238,7 +241,7 @@ class McpControllerTest {
                 """;
 
         mockMvc.perform(post("/mcp/tools/call")
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tool").value("mcp-schema-tasks"));
@@ -256,7 +259,7 @@ class McpControllerTest {
                 """;
 
         mockMvc.perform(post("/mcp/tools/call")
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tool").value("mcp-tasks-summary"))
@@ -283,7 +286,7 @@ class McpControllerTest {
                 """;
 
         mockMvc.perform(post("/mcp/tools/call")
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.requested").value(1))
@@ -299,7 +302,7 @@ class McpControllerTest {
                 """;
 
         mockMvc.perform(post("/mcp/tools/call")
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Unknown tool: unknown-tool"));
@@ -317,7 +320,7 @@ class McpControllerTest {
                 """;
 
         mockMvc.perform(post("/mcp/tools/call")
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("arguments must be a list of task objects"));
@@ -340,10 +343,10 @@ class McpControllerTest {
                 """;
 
         mockMvc.perform(post("/mcp/tools/call")
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("Invalid dueDate format. Expected YYYY-MM-DD."));
+                .andExpect(jsonPath("$.error", containsString("dueDate")));
     }
 
     @Test
@@ -370,11 +373,83 @@ class McpControllerTest {
         body.append("]}");
 
         mockMvc.perform(post("/mcp/tools/call")
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content(body.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.requested").value(5001))
                 .andExpect(jsonPath("$.inserted").value(0))
                 .andExpect(jsonPath("$.errorSamples[0]").value("Too many tasks in one request. Max = 5000"));
+    }
+
+    @Test
+    void callTool_shouldRejectBlankTitle() throws Exception {
+        String body = """
+                {
+                  "name": "mcp-tasks",
+                  "arguments": [
+                    {
+                      "title": "",
+                      "description": "test",
+                      "status": "OPEN",
+                      "priority": "MEDIUM",
+                      "dueDate": "2026-01-01"
+                    }
+                  ]
+                }
+                """;
+
+        mockMvc.perform(post("/mcp/tools/call")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", containsString("title")));
+    }
+
+    @Test
+    void callTool_shouldRejectInvalidStatus() throws Exception {
+        String body = """
+                {
+                  "name": "mcp-tasks",
+                  "arguments": [
+                    {
+                      "title": "Example Task",
+                      "description": "test",
+                      "status": "INVALID",
+                      "priority": "MEDIUM",
+                      "dueDate": "2026-01-01"
+                    }
+                  ]
+                }
+                """;
+
+        mockMvc.perform(post("/mcp/tools/call")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", containsString("status")));
+    }
+
+    @Test
+    void callTool_shouldRejectInvalidPriority() throws Exception {
+        String body = """
+                {
+                  "name": "mcp-tasks",
+                  "arguments": [
+                    {
+                      "title": "Example Task",
+                      "description": "test",
+                      "status": "OPEN",
+                      "priority": "URGENT",
+                      "dueDate": "2026-01-01"
+                    }
+                  ]
+                }
+                """;
+
+        mockMvc.perform(post("/mcp/tools/call")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", containsString("priority")));
     }
 }

@@ -11,5 +11,15 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 
 ALTER TABLE tasks
-ADD CONSTRAINT status_check
-CHECK (status IN ('OPEN','IN_PROGRESS','DONE','BLOCKED'));
+    DROP CONSTRAINT IF EXISTS status_check;
+
+ALTER TABLE tasks
+    ADD CONSTRAINT status_check
+    CHECK (status IN ('OPEN','IN_PROGRESS','DONE','BLOCKED'));
+
+ALTER TABLE tasks
+    DROP CONSTRAINT IF EXISTS priority_check;
+
+ALTER TABLE tasks
+    ADD CONSTRAINT priority_check
+    CHECK (priority IN ('LOW','MEDIUM','HIGH'));

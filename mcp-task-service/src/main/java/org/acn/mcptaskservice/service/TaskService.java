@@ -3,6 +3,7 @@ package org.acn.mcptaskservice.service;
 import org.acn.mcptaskservice.dto.TaskCreateRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcOperations;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,9 +19,9 @@ public class TaskService {
 
     private static final Logger log = LoggerFactory.getLogger(TaskService.class);
 
-    private final JdbcTemplate jdbcTemplate;
+   private final JdbcOperations jdbcTemplate;
 
-    public TaskService(JdbcTemplate jdbcTemplate) {
+    public TaskService(JdbcOperations jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -34,7 +35,6 @@ public class TaskService {
         log.info("Starting batch insert for {} tasks", tasks.size());
 
         List<Object[]> batchArgs = new ArrayList<>();
-
         for (TaskCreateRequest task : tasks) {
             batchArgs.add(new Object[]{
                     task.getTitle(),
@@ -55,18 +55,16 @@ public class TaskService {
         }
 
         log.info("Batch insert completed. Requested: {}, Inserted: {}", tasks.size(), inserted);
-
         return inserted;
     }
 
+    @Transactional(readOnly = true)
     public long getTotalCount() {
-        Long count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM tasks",
-                Long.class
-        );
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM tasks", Long.class);
         return count == null ? 0 : count;
     }
 
+    @Transactional(readOnly = true)
     public Map<String, Long> getCountByStatus() {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 "SELECT status, COUNT(*) AS count FROM tasks GROUP BY status ORDER BY status"
@@ -74,10 +72,7 @@ public class TaskService {
 
         Map<String, Long> result = new LinkedHashMap<>();
         for (Map<String, Object> row : rows) {
-            result.put(
-                    String.valueOf(row.get("status")),
-                    ((Number) row.get("count")).longValue()
-            );
+            result.put(String.valueOf(row.get("status")), ((Number) row.get("count")).longValue());
         }
         return result;
     }

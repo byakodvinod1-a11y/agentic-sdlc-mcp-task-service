@@ -81,7 +81,7 @@ agentic-sdlc-mcp-task-service/
 │   └── ...
 ├── db/
 │   └── 001_init.sql              # PostgreSQL table creation
-├── docker-compose.yml            # PostgreSQL container
+├── docker-compose.yml            # Runs PostgreSQL and app service
 ├── agent-garage/
 │   └── AI_Core_Agent_Garage/     # AgentGarage / n8n setup
 ├── generate_tasks.py             # Optional helper script used during testing
@@ -247,7 +247,7 @@ Set the required environment variables before running the application:
 export DB_URL=jdbc:postgresql://localhost:5432/taskdb
 export DB_USER=app
 export DB_PASSWORD=your-password
-export MCP_API_KEY=your-secret-key
+export MCP_API_KEY=your-secret-key (app.api-key is resolved from MCP_API_KEY in application.yml)
 ```
 
 ## Step A — Start PostgreSQL
