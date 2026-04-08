@@ -1,0 +1,163 @@
+{
+  "name": "AI Task Generator (MCP)",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -320,
+        -32
+      ],
+      "id": "4896c3f4-d07f-4853-a5b5-fdd1c7002cac",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "url": "http://host.lima.internal:8080/mcp/schema/tasks",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -112,
+        -32
+      ],
+      "id": "b7ce9e4f-9887-40e8-88db-c14c2c6da56c",
+      "name": "Get Task Schema"
+    },
+    {
+      "parameters": {
+        "jsCode": "const batches = [];\nfor (let i = 1; i < 2; i++) {\n  batches.push({\n    json: {\n      batchNumber: i,\n      batchSize: 5\n    }\n  });\n}\nreturn batches;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        -32
+      ],
+      "id": "9558d86e-17c4-4db8-8946-1406dbdd3032",
+      "name": "Create Batches"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.lima.internal:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  model: \"llama3.2\",\n  prompt:\n    \"You are generating realistic task records for a task management application.\\n\\n\" +\n    \"Generate exactly \" + $json.batchSize + \" tasks.\\n\\n\" +\n    \"Rules:\\n\" +\n    \"- Return one valid JSON object per line.\\n\" +\n    \"- Do not wrap in an array.\\n\" +\n    \"- No markdown.\\n\" +\n    \"- No explanations.\\n\" +\n    \"- title required\\n\" +\n    \"- status: OPEN, IN_PROGRESS, DONE, BLOCKED\\n\" +\n    \"- priority: LOW, MEDIUM, HIGH\\n\" +\n    \"- dueDate: must be date only in exact format YYYY-MM-DD\\n\" +\n    \"-Do not include time, timezone, or ISO timestamp\\n\" +\n\"- Return one compact JSON object per line\"+\n\"- Each line must start with { and end with }.\"+\n\"- Do not output [, ], commas between lines, or any explanatory text.\"+\n\"- Do not output partial objects.\"+\n    \"Batch: \" + $json.batchNumber,\n  stream: false\n}\n}}",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        304,
+        -32
+      ],
+      "id": "b2b188e0-00ce-4349-bef5-918870b6fdf0",
+      "name": "Generate Tasks with Ollama"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  const raw = item.json.response || \"\";\n  let text = raw.trim();\n\n  // Remove markdown fences if present\n  text = text\n    .replace(/^```json\\s*/i, \"\")\n    .replace(/^```\\s*/i, \"\")\n    .replace(/```$/i, \"\")\n    .trim();\n\n  // Extract every flat JSON object like { ... }\n  const matches = text.match(/\\{[^{}]*\\}/g);\n\n  if (!matches || matches.length === 0) {\n    throw new Error(\"No JSON objects found in Ollama response:\\n\" + raw);\n  }\n\n  const tasks = [];\n\n  for (const m of matches) {\n    let task;\n    try {\n      task = JSON.parse(m);\n    } catch (e) {\n      continue;\n    }\n\n    // Normalize dueDate to YYYY-MM-DD\n    if (task.dueDate && typeof task.dueDate === \"string\") {\n      task.dueDate = task.dueDate.slice(0, 10);\n    }\n\n    const cleaned = {\n      title: task.title,\n      description: task.description ?? \"\",\n      status: task.status,\n      priority: task.priority,\n    };\n\n    if (task.dueDate) {\n      cleaned.dueDate = task.dueDate;\n    }\n\n    if (\n      cleaned.title &&\n      [\"OPEN\", \"IN_PROGRESS\", \"DONE\", \"BLOCKED\"].includes(cleaned.status) &&\n      [\"LOW\", \"MEDIUM\", \"HIGH\"].includes(cleaned.priority)\n    ) {\n      tasks.push(cleaned);\n    }\n  }\n\n  if (tasks.length === 0) {\n    throw new Error(\"No valid tasks could be parsed from Ollama response:\\n\" + raw);\n  }\n\n  return {\n    json: {\n      batchCount: tasks.length,\n      tasks\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        -32
+      ],
+      "id": "d289adad-be4d-4033-83b1-5af56553111d",
+      "name": "Parse AI Tasks"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.lima.internal:8080/mcp/tasks",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json.tasks}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        720,
+        -32
+      ],
+      "id": "50743d9b-c557-4396-baa2-e783accce103",
+      "name": "Insert Tasks into MCP"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get Task Schema",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Task Schema": {
+      "main": [
+        [
+          {
+            "node": "Create Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Batches": {
+      "main": [
+        [
+          {
+            "node": "Generate Tasks with Ollama",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Tasks with Ollama": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Tasks": {
+      "main": [
+        [
+          {
+            "node": "Insert Tasks into MCP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "57c18a27-7f68-4f5f-aa7c-65e322eb0bd4",
+  "meta": {
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "nzh4cndLWLJSYJ5L",
+  "tags": []
+}

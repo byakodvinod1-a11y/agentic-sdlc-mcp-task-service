@@ -2,7 +2,7 @@
 
 This repository implements the **Agentic SDLC Advanced Assignment** and contains the two required parts:
 
-1. **Minimal MCP Server (Spring Boot + PostgreSQL)** for AI-powered task data injection  
+1. **Minimal MCP-style Task Service (Spring Boot + PostgreSQL)** for AI-powered task data injection  
 2. **AgentGarage Workflow (n8n + Local LLM via Ollama)** for an SDLC automation use case
 
 ---
@@ -11,10 +11,10 @@ This repository implements the **Agentic SDLC Advanced Assignment** and contains
 
 The objective of this project is to demonstrate an **AI-driven SDLC workflow** where:
 
-- an **AI agent** can inspect a task schema,
-- generate realistic task records,
-- insert them through an MCP-compatible service,
-- and validate the result in a PostgreSQL database.
+- an **AI agent** can inspect a task schema
+- generate realistic task records
+- insert them through an MCP-style service
+- validate the result in a PostgreSQL database
 
 In addition, the project includes an **AgentGarage / n8n workflow** that orchestrates the local LLM and the MCP service.
 
@@ -43,12 +43,12 @@ Webhook / Agent Trigger
 ```text
 AI Agent
    ⇅
-Custom MCP Server (Spring Boot)
+Custom MCP-style Server (Spring Boot)
    ⇅
 PostgreSQL
 ```
 
-The MCP server is not part of the main business application flow.  
+The MCP service is not part of the main business application flow.  
 It acts as a **controlled AI-facing access layer** for schema inspection, data insertion, and summary retrieval.
 
 ## AgentGarage Workflow Architecture
@@ -93,13 +93,17 @@ agentic-sdlc-mcp-task-service/
 # 4. Technology Stack
 
 ## Backend / MCP
-- Java 17
+
+- Java 21
 - Spring Boot
 - Maven
 - PostgreSQL
 - Docker / docker-compose
+- Spring Security
+- Spring Actuator
 
 ## Agent / Workflow
+
 - n8n
 - Ollama
 - llama3.2
@@ -111,11 +115,11 @@ agentic-sdlc-mcp-task-service/
 
 ## Objective
 
-Build a minimal MCP-compatible service that allows an AI agent to:
+Build a minimal MCP-style service that allows an AI agent to:
 
-- inspect the task schema,
-- insert task records,
-- retrieve summary statistics.
+- inspect the task schema
+- insert task records
+- retrieve summary statistics
 
 ## MCP Endpoints
 
@@ -125,24 +129,26 @@ Build a minimal MCP-compatible service that allows an AI agent to:
 | `/mcp/schema/tasks` | GET | Returns simplified task schema |
 | `/mcp/tasks` | POST | Inserts task records |
 | `/mcp/tasks/summary` | GET | Returns task statistics by status |
+| `/actuator/health` | GET | Returns application health status |
 
 ## MCP Endpoint Usage
 
 ### Help
+
 ```bash
-curl http://localhost:8080/mcp/help
+curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/help
 ```
 
 ### Schema
+
 ```bash
-curl http://localhost:8080/mcp/schema/tasks
+curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/schema/tasks
 ```
 
 ### Insert Tasks
+
 ```bash
-curl -X POST http://localhost:8080/mcp/tasks \
-  -H "Content-Type: application/json" \
-  -d '[{
+curl -X POST http://localhost:8080/mcp/tasks   -H "Content-Type: application/json"   -H "X-API-KEY: your-secret-key"   -d '[{
     "title":"Example Task",
     "description":"Test task",
     "status":"OPEN",
@@ -152,8 +158,34 @@ curl -X POST http://localhost:8080/mcp/tasks \
 ```
 
 ### Summary
+
 ```bash
-curl http://localhost:8080/mcp/tasks/summary
+curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/tasks/summary
+```
+
+### Health Check
+
+```bash
+curl http://localhost:8080/actuator/health
+```
+
+## Security
+
+Protected endpoints require:
+
+- Header: `X-API-KEY`
+- Value: your configured `MCP_API_KEY`
+
+Example:
+
+```bash
+curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/tasks/summary
+```
+
+The health endpoint is intentionally accessible without an API key:
+
+```bash
+curl http://localhost:8080/actuator/health
 ```
 
 ---
@@ -171,15 +203,27 @@ The `tasks` table includes:
 - `created_at`
 
 ## Allowed Status Values
+
 - OPEN
 - IN_PROGRESS
 - DONE
 - BLOCKED
 
 ## Allowed Priority Values
+
 - LOW
 - MEDIUM
 - HIGH
+
+## Validation Rules
+
+- `title` is required
+- `title` max length is 140
+- `description` max length is 5000
+- `status` must be one of the allowed status values
+- `priority` must be one of the allowed priority values
+- `dueDate` must be in `YYYY-MM-DD` format
+- Maximum batch size per request is `5000`
 
 ---
 
@@ -189,13 +233,22 @@ The `tasks` table includes:
 
 Make sure you have installed:
 
-- Java 17+
+- Java 21+
 - Maven
 - Docker / docker-compose
 - Ollama
 - n8n
 
----
+## Environment Variables
+
+Set the required environment variables before running the application:
+
+```bash
+export DB_URL=jdbc:postgresql://localhost:5432/taskdb
+export DB_USER=app
+export DB_PASSWORD=your-password
+export MCP_API_KEY=your-secret-key
+```
 
 ## Step A — Start PostgreSQL
 
@@ -205,13 +258,11 @@ From the project root:
 docker-compose up -d
 ```
 
-Verify container is running:
+Verify the container is running:
 
 ```bash
 docker ps
 ```
-
----
 
 ## Step B — Run the MCP Service
 
@@ -228,19 +279,19 @@ The MCP service will be available at:
 http://localhost:8080
 ```
 
----
-
 ## Step C — Verify MCP Service
 
 Run:
 
 ```bash
-curl http://localhost:8080/mcp/help
-curl http://localhost:8080/mcp/schema/tasks
-curl http://localhost:8080/mcp/tasks/summary
-```
+curl http://localhost:8080/actuator/health
 
----
+curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/help
+
+curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/schema/tasks
+
+curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/tasks/summary
+```
 
 ## Step D — Start Ollama
 
@@ -261,8 +312,6 @@ Verify:
 ```bash
 curl http://localhost:11434/api/tags
 ```
-
----
 
 ## Step E — Start n8n
 
@@ -304,9 +353,7 @@ It takes a webhook request, asks the local LLM to generate tasks, parses them, i
 Once the webhook workflow is active, trigger it with:
 
 ```bash
-curl -X POST http://localhost:5678/webhook/agent/tasks \
-  -H "Content-Type: application/json" \
-  -d '{"batchCount":100,"batchSize":10}'
+curl -X POST http://localhost:5678/webhook/agent/tasks   -H "Content-Type: application/json"   -d '{"batchCount":100,"batchSize":10}'
 ```
 
 ---
@@ -341,7 +388,7 @@ This ensures the generated data is not inserted blindly.
 The final dataset was validated using:
 
 ```bash
-curl http://localhost:8080/mcp/tasks/summary
+curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/tasks/summary
 ```
 
 and direct database verification:
@@ -354,21 +401,21 @@ docker-compose exec postgres psql -U app -d taskdb -c "SELECT COUNT(*) FROM task
 
 - Total tasks created: **1000**
 - Data stored successfully in PostgreSQL
-- Inserted through MCP-compatible API
+- Inserted through MCP-style API
 - Generated through AI-assisted workflow
 
- Final summary Output:
+## Final Summary Output
 
 ```json
 {
-  "specVersion":"2025-06-18",
-  "tool":"mcp-tasks-summary",
-  "total":1000,
-  "byStatus":{
-    "OPEN":346,
-    "IN_PROGRESS":237,
-    "DONE":199,
-    "BLOCKED":218
+  "specVersion": "2025-06-18",
+  "tool": "mcp-tasks-summary",
+  "total": 1000,
+  "byStatus": {
+    "OPEN": 344,
+    "IN_PROGRESS": 236,
+    "DONE": 199,
+    "BLOCKED": 221
   }
 }
 ```
@@ -378,19 +425,24 @@ docker-compose exec postgres psql -U app -d taskdb -c "SELECT COUNT(*) FROM task
 # 12. Assignment Requirements Covered
 
 ## MCP Service
+
 - MCP tool is running and accessible
 - Schema inspection works
 - Task insertion works
 - Summary endpoint works
 - PostgreSQL integration works
+- API key protection is implemented
+- Health check endpoint is available
 
 ## AI Agent Integration
+
 - AI inspects the schema
 - AI generates realistic tasks
 - AI inserts tasks through MCP
 - AI validates success through summary endpoint
 
 ## AgentGarage
+
 - Local LLM setup completed
 - n8n workflow created
 - At least one API request to local LLM
@@ -399,18 +451,38 @@ docker-compose exec postgres psql -U app -d taskdb -c "SELECT COUNT(*) FROM task
 
 ---
 
-# 13. Notes
+# 13. Tests
+
+Run the full test suite with:
+
+```bash
+mvn clean test
+```
+
+The test suite covers:
+
+- service logic
+- schema generation
+- exception handling
+- controller behavior
+- security smoke tests
+
+---
+
+# 14. Notes
 
 - During testing, smaller batches were used first to stabilize the local LLM output.
 - The final 1000-task target was reached through repeated AI-driven batch execution.
-- Some parser normalization was added to handle non-perfect LLM JSON formatting.
+- Some parser normalization was added to handle imperfect LLM JSON formatting.
+- This implementation is **MCP-style / MCP-inspired**, not a full JSON-RPC MCP protocol server.
 
 ---
-# 14. Sample Agent Prompt
+
+# 15. Sample Agent Prompt
 
 The following prompt was used by the AI agent:
 
-"Please inspect the task schema at /mcp/schema/tasks. Then generate and insert 1000 diverse tasks with random statuses, titles, and due dates using the /mcp/tasks endpoint."
+> Please inspect the task schema at `/mcp/schema/tasks`. Then generate and insert 1000 diverse tasks with random statuses, titles, and due dates using the `/mcp/tasks` endpoint.
 
 The agent workflow performed the following steps:
 
@@ -422,18 +494,24 @@ The agent workflow performed the following steps:
 This confirms end-to-end AI-driven task generation and database insertion.
 
 ---
-# 15. Screenshots
 
-## 15.1. Agentic SDLC Workflow
-   ![Agentic SDLC Workflow](image-1.png)
+# 16. Screenshots
 
-## 15.2. AI Task Generator (MCP)
-   ![AI Task Generator (MCP)](image.png)
+## 16.1 Agentic SDLC Workflow
 
-## 15.3. Tasks Summary
- 
- curl http://localhost:8080/mcp/tasks/summary
- 
+![Agentic SDLC Workflow](image-1.png)
+
+## 16.2 AI Task Generator (MCP)
+
+![AI Task Generator (MCP)](image.png)
+
+## 16.3 Tasks Summary
+
+```bash
+curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/tasks/summary
+```
+
+```json
 {
   "total": 1000,
   "byStatus": {
@@ -443,12 +521,12 @@ This confirms end-to-end AI-driven task generation and database insertion.
     "BLOCKED": 221
   }
 }
- 
- ![![Task Summmary](image-3.png)](image-2.png)
-  
----  
-# 16. Author
+```
 
-**Vinod Byakod**
+![Tasks Summary](image-2.png)
 
 ---
+
+# 17. Author
+
+**Vinod Byakod**

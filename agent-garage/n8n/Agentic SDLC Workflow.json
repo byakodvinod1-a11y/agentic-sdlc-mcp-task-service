@@ -1,0 +1,197 @@
+{
+  "name": "Agentic SDLC Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agent/tasks",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "c89e914e-df74-48bb-ae4a-fb9e43ecd98e",
+      "name": "Webhook",
+      "webhookId": "54cc0539-fb8e-4c04-9601-db5aa57f1c19"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || {};\n\nconst batchCount = Number(body.batchCount || 2);\nconst batchSize = Number(body.batchSize || 5);\n\nconst batches = [];\nfor (let i = 1; i <= batchCount; i++) {\n  batches.push({\n    json: {\n      batchNumber: i,\n      batchSize\n    }\n  });\n}\n\nreturn batches;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "9284cb52-214d-48a1-8067-d8e6703d1b92",
+      "name": "Create Batches From Request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.lima.internal:11434/api/generate",
+        "sendBody": true,
+        "contentType": "=json",
+        "specifyBody": "json",
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "jsonBody": "={{\n{\n  model: \"llama3.2\",\n  prompt:\n    \"Generate exactly \" + $json.batchSize + \" realistic task records.\\n\" +\n    \"Return one compact JSON object after another.\\n\" +\n    \"Do not wrap them in an array.\\n\" +\n    \"Do not add explanation text.\\n\" +\n    \"Each object must contain: title, description, status, priority, dueDate.\\n\" +\n    \"status must be one of OPEN, IN_PROGRESS, DONE, BLOCKED.\\n\" +\n    \"priority must be one of LOW, MEDIUM, HIGH.\\n\" +\n    \"dueDate must be YYYY-MM-DD.\\n\" +\n    \"Batch number: \" + $json.batchNumber + \".\",\n  stream: false\n}\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "17c64c32-08a6-4db8-92fc-afbb1ba293aa",
+      "name": "Generate Tasks with Ollama"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  const raw = item.json.response || \"\";\n  let text = raw.trim();\n\n  text = text\n    .replace(/^```json\\s*/i, \"\")\n    .replace(/^```\\s*/i, \"\")\n    .replace(/```$/i, \"\")\n    .trim();\n\n  const matches = text.match(/\\{[^{}]*\\}/g);\n\n  if (!matches || matches.length === 0) {\n    throw new Error(\"No JSON objects found in Ollama response:\\n\" + raw);\n  }\n\n  const tasks = [];\n\n  for (const m of matches) {\n    let task;\n    try {\n      task = JSON.parse(m);\n    } catch (e) {\n      continue;\n    }\n\n    if (task.dueDate && typeof task.dueDate === \"string\") {\n      task.dueDate = task.dueDate.slice(0, 10);\n    }\n\n    const cleaned = {\n      title: task.title,\n      description: task.description ?? \"\",\n      status: task.status,\n      priority: task.priority,\n    };\n\n    if (task.dueDate) cleaned.dueDate = task.dueDate;\n\n    if (\n      cleaned.title &&\n      [\"OPEN\", \"IN_PROGRESS\", \"DONE\", \"BLOCKED\"].includes(cleaned.status) &&\n      [\"LOW\", \"MEDIUM\", \"HIGH\"].includes(cleaned.priority)\n    ) {\n      tasks.push(cleaned);\n    }\n  }\n\n  return {\n    json: {\n      batchCount: tasks.length,\n      tasks\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "83541090-4aee-44b3-ad24-003cb4a79a0d",
+      "name": "Parse AI Tasks"
+    },
+    {
+      "parameters": {
+        "url": "http://host.lima.internal:8080/mcp/tasks/summary",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "323f3f5a-6d22-4845-bf03-a2831e335b15",
+      "name": "Get MCP Summary"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.lima.internal:8080/mcp/tasks",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json.tasks}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        832,
+        0
+      ],
+      "id": "90a61ef6-fc7e-4262-975b-55cfd9c7d7cb",
+      "name": "Insert Tasks into MCP"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1248,
+        0
+      ],
+      "id": "87f27a4b-be6f-4efd-ba20-34f7cbbcde8a",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Create Batches From Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Batches From Request": {
+      "main": [
+        [
+          {
+            "node": "Generate Tasks with Ollama",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Tasks with Ollama": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Tasks": {
+      "main": [
+        [
+          {
+            "node": "Insert Tasks into MCP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Tasks into MCP": {
+      "main": [
+        [
+          {
+            "node": "Get MCP Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get MCP Summary": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "df20495f-06fd-45de-9401-95a0e253180f",
+  "meta": {
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "1rezRsaRDQVJuEeP",
+  "tags": []
+}

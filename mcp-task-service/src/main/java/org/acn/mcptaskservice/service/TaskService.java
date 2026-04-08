@@ -1,10 +1,11 @@
 package org.acn.mcptaskservice.service;
 
-
-
 import org.acn.mcptaskservice.dto.TaskCreateRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Date;
 import java.util.ArrayList;
@@ -15,17 +16,22 @@ import java.util.Map;
 @Service
 public class TaskService {
 
+    private static final Logger log = LoggerFactory.getLogger(TaskService.class);
+
     private final JdbcTemplate jdbcTemplate;
 
     public TaskService(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    @Transactional
     public int insertTasks(List<TaskCreateRequest> tasks) {
         String sql = """
                 INSERT INTO tasks (title, description, status, priority, due_date)
                 VALUES (?, ?, ?, ?, ?)
                 """;
+
+        log.info("Starting batch insert for {} tasks", tasks.size());
 
         List<Object[]> batchArgs = new ArrayList<>();
 
@@ -35,9 +41,7 @@ public class TaskService {
                     task.getDescription(),
                     task.getStatus(),
                     task.getPriority(),
-                    task.getDueDate() == null || task.getDueDate().isBlank()
-                            ? null
-                            : Date.valueOf(task.getDueDate())
+                    parseDueDate(task.getDueDate())
             });
         }
 
@@ -49,6 +53,8 @@ public class TaskService {
                 inserted++;
             }
         }
+
+        log.info("Batch insert completed. Requested: {}, Inserted: {}", tasks.size(), inserted);
 
         return inserted;
     }
@@ -74,5 +80,18 @@ public class TaskService {
             );
         }
         return result;
+    }
+
+    private Date parseDueDate(String dueDate) {
+        if (dueDate == null || dueDate.isBlank()) {
+            return null;
+        }
+
+        try {
+            return Date.valueOf(dueDate);
+        } catch (IllegalArgumentException ex) {
+            log.warn("Invalid dueDate received: {}", dueDate);
+            throw new IllegalArgumentException("Invalid dueDate format. Expected YYYY-MM-DD.");
+        }
     }
 }

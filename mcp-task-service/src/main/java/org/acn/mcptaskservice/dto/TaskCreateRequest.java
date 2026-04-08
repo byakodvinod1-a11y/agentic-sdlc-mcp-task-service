@@ -19,6 +19,7 @@ public class TaskCreateRequest {
     @Pattern(regexp = "LOW|MEDIUM|HIGH")
     private String priority = "MEDIUM";
 
+    @Pattern(regexp = "\\d{4}-\\d{2}-\\d{2}", message = "dueDate must be in YYYY-MM-DD format")
     private String dueDate;
 
     public String getTitle() {

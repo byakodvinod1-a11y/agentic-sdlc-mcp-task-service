@@ -14,7 +14,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 @TestPropertySource(properties = {
         "spring.datasource.url=jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
         "spring.datasource.driver-class-name=org.h2.Driver",
@@ -82,7 +82,9 @@ class McpControllerTest {
                         .contentType("application/json")
                         .content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.inserted").value(2));
+                .andExpect(jsonPath("$.requested").value(2))
+                .andExpect(jsonPath("$.inserted").value(2))
+                .andExpect(jsonPath("$.errorSamples").isArray());
     }
 
     @Test
@@ -92,6 +94,287 @@ class McpControllerTest {
 
         mockMvc.perform(get("/mcp/tasks/summary"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.total").value(2));
+                .andExpect(jsonPath("$.total").value(2))
+                .andExpect(jsonPath("$.byStatus.OPEN").value(1))
+                .andExpect(jsonPath("$.byStatus.DONE").value(1));
+    }
+
+    @Test
+    void insertTasks_shouldRejectBlankTitle() throws Exception {
+        String body = """
+                [
+                  {
+                    "title": "",
+                    "description": "Create sample tasks",
+                    "status": "OPEN",
+                    "priority": "HIGH",
+                    "dueDate": "2026-04-05"
+                  }
+                ]
+                """;
+
+        mockMvc.perform(post("/mcp/tasks")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void insertTasks_shouldRejectInvalidStatus() throws Exception {
+        String body = """
+                [
+                  {
+                    "title": "Bad status task",
+                    "status": "STARTED",
+                    "priority": "HIGH",
+                    "dueDate": "2026-04-05"
+                  }
+                ]
+                """;
+
+        mockMvc.perform(post("/mcp/tasks")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void insertTasks_shouldRejectInvalidPriority() throws Exception {
+        String body = """
+                [
+                  {
+                    "title": "Bad priority task",
+                    "status": "OPEN",
+                    "priority": "URGENT",
+                    "dueDate": "2026-04-05"
+                  }
+                ]
+                """;
+
+        mockMvc.perform(post("/mcp/tasks")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void insertTasks_shouldRejectInvalidDueDate() throws Exception {
+        String body = """
+                [
+                  {
+                    "title": "Bad due date",
+                    "status": "OPEN",
+                    "priority": "HIGH",
+                    "dueDate": "05-04-2026"
+                  }
+                ]
+                """;
+
+        mockMvc.perform(post("/mcp/tasks")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void insertTasks_shouldRejectMalformedJson() throws Exception {
+        String body = """
+                [
+                  {
+                    "title": "Broken JSON"
+                """;
+
+        mockMvc.perform(post("/mcp/tasks")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void insertTasks_shouldRejectWhenTooManyTasksProvided() throws Exception {
+        StringBuilder body = new StringBuilder("[");
+        for (int i = 0; i < 5001; i++) {
+            if (i > 0) {
+                body.append(",");
+            }
+            body.append("""
+                    {
+                      "title": "Task %d",
+                      "status": "OPEN",
+                      "priority": "MEDIUM"
+                    }
+                    """.formatted(i));
+        }
+        body.append("]");
+
+        mockMvc.perform(post("/mcp/tasks")
+                        .contentType("application/json")
+                        .content(body.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requested").value(5001))
+                .andExpect(jsonPath("$.inserted").value(0))
+                .andExpect(jsonPath("$.errorSamples[0]").value("Too many tasks in one request. Max = 5000"));
+    }
+
+    @Test
+    void listTools_shouldReturnAvailableTools() throws Exception {
+        mockMvc.perform(post("/mcp/tools/list"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tool").value("tools/list"))
+                .andExpect(jsonPath("$.tools").isArray());
+    }
+
+    @Test
+    void callTool_shouldReturnSchemaForSchemaTool() throws Exception {
+        String body = """
+                {
+                  "name": "mcp-schema-tasks"
+                }
+                """;
+
+        mockMvc.perform(post("/mcp/tools/call")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tool").value("mcp-schema-tasks"));
+    }
+
+    @Test
+    void callTool_shouldReturnSummaryForSummaryTool() throws Exception {
+        jdbcTemplate.update("INSERT INTO tasks(title, status, priority) VALUES ('A', 'OPEN', 'HIGH')");
+        jdbcTemplate.update("INSERT INTO tasks(title, status, priority) VALUES ('B', 'DONE', 'LOW')");
+
+        String body = """
+                {
+                  "name": "mcp-tasks-summary"
+                }
+                """;
+
+        mockMvc.perform(post("/mcp/tools/call")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tool").value("mcp-tasks-summary"))
+                .andExpect(jsonPath("$.total").value(2))
+                .andExpect(jsonPath("$.byStatus.OPEN").value(1))
+                .andExpect(jsonPath("$.byStatus.DONE").value(1));
+    }
+
+    @Test
+    void callTool_shouldInsertTasksForMcpTasksTool() throws Exception {
+        String body = """
+                {
+                  "name": "mcp-tasks",
+                  "arguments": [
+                    {
+                      "title": "Task from tool call",
+                      "description": "Created via tool call",
+                      "status": "OPEN",
+                      "priority": "HIGH",
+                      "dueDate": "2026-04-05"
+                    }
+                  ]
+                }
+                """;
+
+        mockMvc.perform(post("/mcp/tools/call")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requested").value(1))
+                .andExpect(jsonPath("$.inserted").value(1));
+    }
+
+    @Test
+    void callTool_shouldRejectUnknownTool() throws Exception {
+        String body = """
+                {
+                  "name": "unknown-tool"
+                }
+                """;
+
+        mockMvc.perform(post("/mcp/tools/call")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Unknown tool: unknown-tool"));
+    }
+
+    @Test
+    void callTool_shouldRejectWhenArgumentsIsNotAList() throws Exception {
+        String body = """
+                {
+                  "name": "mcp-tasks",
+                  "arguments": {
+                    "title": "Not a list"
+                  }
+                }
+                """;
+
+        mockMvc.perform(post("/mcp/tools/call")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("arguments must be a list of task objects"));
+    }
+
+    @Test
+    void callTool_shouldRejectInvalidDueDate() throws Exception {
+        String body = """
+                {
+                  "name": "mcp-tasks",
+                  "arguments": [
+                    {
+                      "title": "Bad due date in tool call",
+                      "status": "OPEN",
+                      "priority": "HIGH",
+                      "dueDate": "04/05/2026"
+                    }
+                  ]
+                }
+                """;
+
+        mockMvc.perform(post("/mcp/tools/call")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Invalid dueDate format. Expected YYYY-MM-DD."));
+    }
+
+    @Test
+    void callTool_shouldRejectWhenTooManyTasksProvided() throws Exception {
+        StringBuilder body = new StringBuilder("""
+                {
+                  "name": "mcp-tasks",
+                  "arguments": [
+                """);
+
+        for (int i = 0; i < 5001; i++) {
+            if (i > 0) {
+                body.append(",");
+            }
+            body.append("""
+                    {
+                      "title": "Task %d",
+                      "status": "OPEN",
+                      "priority": "MEDIUM"
+                    }
+                    """.formatted(i));
+        }
+
+        body.append("]}");
+
+        mockMvc.perform(post("/mcp/tools/call")
+                        .contentType("application/json")
+                        .content(body.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requested").value(5001))
+                .andExpect(jsonPath("$.inserted").value(0))
+                .andExpect(jsonPath("$.errorSamples[0]").value("Too many tasks in one request. Max = 5000"));
     }
 }
