@@ -1,5 +1,6 @@
 package org.acn.mcptaskservice.exception;
 
+import org.acn.mcptaskservice.mcp.McpProtocolException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -32,7 +33,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(errorBody(message));
     }
 
-    // ⭐ NEW (Spring Boot 3 validation)
     @ExceptionHandler(HandlerMethodValidationException.class)
     public ResponseEntity<Map<String, Object>> handleHandlerMethodValidation(
             HandlerMethodValidationException ex) {
@@ -44,6 +44,24 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
         return ResponseEntity.badRequest().body(errorBody(ex.getMessage()));
+    }
+
+@ExceptionHandler(McpProtocolException.class)
+public ResponseEntity<Map<String, Object>> handleMcpProtocol(McpProtocolException ex) {
+    Map<String, Object> error = new LinkedHashMap<>();
+    error.put("code", ex.getCode());
+    error.put("message", ex.getMessage());
+
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("error", error);
+
+    return ResponseEntity.badRequest().body(body);
+}
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleMalformedJson(HttpMessageNotReadableException ex) {
+        return ResponseEntity.badRequest()
+                .body(errorBody("Malformed JSON request"));
     }
 
     @ExceptionHandler(DataAccessException.class)
@@ -65,12 +83,4 @@ public class GlobalExceptionHandler {
         body.put("error", message);
         return body;
     }
-
-    @ExceptionHandler(HttpMessageNotReadableException.class)
-public ResponseEntity<Map<String, Object>> handleMalformedJson(
-        HttpMessageNotReadableException ex) {
-
-    return ResponseEntity.badRequest()
-            .body(errorBody("Malformed JSON request"));
-}
 }

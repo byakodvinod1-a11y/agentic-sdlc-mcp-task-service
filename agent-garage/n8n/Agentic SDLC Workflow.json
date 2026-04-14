@@ -11,94 +11,12 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
       "position": [
-        0,
-        0
+        944,
+        144
       ],
       "id": "c89e914e-df74-48bb-ae4a-fb9e43ecd98e",
       "name": "Webhook",
       "webhookId": "54cc0539-fb8e-4c04-9601-db5aa57f1c19"
-    },
-    {
-      "parameters": {
-        "jsCode": "const body = $json.body || {};\n\nconst batchCount = Number(body.batchCount || 2);\nconst batchSize = Number(body.batchSize || 5);\n\nconst batches = [];\nfor (let i = 1; i <= batchCount; i++) {\n  batches.push({\n    json: {\n      batchNumber: i,\n      batchSize\n    }\n  });\n}\n\nreturn batches;"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        208,
-        0
-      ],
-      "id": "9284cb52-214d-48a1-8067-d8e6703d1b92",
-      "name": "Create Batches From Request"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://host.lima.internal:11434/api/generate",
-        "sendBody": true,
-        "contentType": "=json",
-        "specifyBody": "json",
-        "bodyParameters": {
-          "parameters": [
-            {}
-          ]
-        },
-        "jsonBody": "={{\n{\n  model: \"llama3.2\",\n  prompt:\n    \"Generate exactly \" + $json.batchSize + \" realistic task records.\\n\" +\n    \"Return one compact JSON object after another.\\n\" +\n    \"Do not wrap them in an array.\\n\" +\n    \"Do not add explanation text.\\n\" +\n    \"Each object must contain: title, description, status, priority, dueDate.\\n\" +\n    \"status must be one of OPEN, IN_PROGRESS, DONE, BLOCKED.\\n\" +\n    \"priority must be one of LOW, MEDIUM, HIGH.\\n\" +\n    \"dueDate must be YYYY-MM-DD.\\n\" +\n    \"Batch number: \" + $json.batchNumber + \".\",\n  stream: false\n}\n}}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        416,
-        0
-      ],
-      "id": "17c64c32-08a6-4db8-92fc-afbb1ba293aa",
-      "name": "Generate Tasks with Ollama"
-    },
-    {
-      "parameters": {
-        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  const raw = item.json.response || \"\";\n  let text = raw.trim();\n\n  text = text\n    .replace(/^```json\\s*/i, \"\")\n    .replace(/^```\\s*/i, \"\")\n    .replace(/```$/i, \"\")\n    .trim();\n\n  const matches = text.match(/\\{[^{}]*\\}/g);\n\n  if (!matches || matches.length === 0) {\n    throw new Error(\"No JSON objects found in Ollama response:\\n\" + raw);\n  }\n\n  const tasks = [];\n\n  for (const m of matches) {\n    let task;\n    try {\n      task = JSON.parse(m);\n    } catch (e) {\n      continue;\n    }\n\n    if (task.dueDate && typeof task.dueDate === \"string\") {\n      task.dueDate = task.dueDate.slice(0, 10);\n    }\n\n    const cleaned = {\n      title: task.title,\n      description: task.description ?? \"\",\n      status: task.status,\n      priority: task.priority,\n    };\n\n    if (task.dueDate) cleaned.dueDate = task.dueDate;\n\n    if (\n      cleaned.title &&\n      [\"OPEN\", \"IN_PROGRESS\", \"DONE\", \"BLOCKED\"].includes(cleaned.status) &&\n      [\"LOW\", \"MEDIUM\", \"HIGH\"].includes(cleaned.priority)\n    ) {\n      tasks.push(cleaned);\n    }\n  }\n\n  return {\n    json: {\n      batchCount: tasks.length,\n      tasks\n    }\n  };\n});"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        624,
-        0
-      ],
-      "id": "83541090-4aee-44b3-ad24-003cb4a79a0d",
-      "name": "Parse AI Tasks"
-    },
-    {
-      "parameters": {
-        "url": "http://host.lima.internal:8080/mcp/tasks/summary",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1040,
-        0
-      ],
-      "id": "323f3f5a-6d22-4845-bf03-a2831e335b15",
-      "name": "Get MCP Summary"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://host.lima.internal:8080/mcp/tasks",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{$json.tasks}}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        832,
-        0
-      ],
-      "id": "90a61ef6-fc7e-4262-975b-55cfd9c7d7cb",
-      "name": "Insert Tasks into MCP"
     },
     {
       "parameters": {
@@ -107,11 +25,243 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        1248,
-        0
+        2688,
+        144
       ],
       "id": "87f27a4b-be6f-4efd-ba20-34f7cbbcde8a",
       "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const totalTasks = Number($env.TOTAL_TASKS || 1000);\nconst batchSize = Number($env.BATCH_SIZE || 10);\n\nif (!Number.isInteger(totalTasks) || totalTasks <= 0) {\n  throw new Error(\"TOTAL_TASKS must be a positive integer\");\n}\n\nif (!Number.isInteger(batchSize) || batchSize <= 0) {\n  throw new Error(\"BATCH_SIZE must be a positive integer\");\n}\n\nconst batchCount = Math.ceil(totalTasks / batchSize);\nconst batches = [];\n\nfor (let i = 1; i <= batchCount; i++) {\n  const remaining = totalTasks - (i - 1) * batchSize;\n  batches.push({\n    json: {\n      batchNumber: i,\n      batchSize: Math.min(batchSize, remaining),\n      totalTasks,\n      batchCount\n    }\n  });\n}\n\nreturn batches;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        144
+      ],
+      "id": "8934a4bc-4ae2-452d-8bc9-ab6513f35fb2",
+      "name": "Create Batches"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.OLLAMA_BASE_URL + \"/api/generate\"}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  model: $env.OLLAMA_MODEL || \"llama3.2:latest\",\n  prompt:\n    \"Generate exactly \" + $json.batchSize + \" realistic task records.\\n\" +\n    \"Return one compact JSON object per line.\\n\" +\n    \"No array. No markdown. No explanations.\\n\" +\n    \"Each object must contain: title, description, status, priority, dueDate.\\n\" +\n    \"Allowed status: OPEN, IN_PROGRESS, DONE, BLOCKED.\\n\" +\n    \"Allowed priority: LOW, MEDIUM, HIGH.\\n\" +\n    \"dueDate must be YYYY-MM-DD.\\n\" +\n    \"Batch: \" + $json.batchNumber,\n  stream: false\n}\n}}",
+        "options": {
+          "timeout": 1200000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1392,
+        144
+      ],
+      "id": "600580e6-85d0-4506-807a-f1e5825e42d8",
+      "name": "Generate Tasks with Ollama"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.MCP_BASE_URL + \"/mcp\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-KEY",
+              "value": "={{$env.MCP_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json, text/event-stream"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  jsonrpc: \"2.0\",\n  id: 1,\n  method: \"initialize\",\n  params: {\n    protocolVersion: \"2025-06-18\",\n    capabilities: {},\n    clientInfo: {\n      name: \"n8n-agent\",\n      version: \"1.0.0\"\n    }\n  }\n}\n}}",
+        "options": {
+          "lowercaseHeaders": false,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1744,
+        144
+      ],
+      "id": "627372bc-eefb-4e22-83b4-28ce874a9824",
+      "name": "Initialize MCP",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.MCP_BASE_URL + \"/mcp\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-KEY",
+              "value": "={{$env.MCP_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json, text/event-stream"
+            },
+            {
+              "name": "MCP-Protocol-Version",
+              "value": "2025-06-18"
+            },
+            {
+              "name": "Mcp-Session-Id",
+              "value": "={{$node[\"Validate MCP Session\"].json[\"sessionId\"]}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  jsonrpc: \"2.0\",\n  method: \"notifications/initialized\"\n}\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2128,
+        144
+      ],
+      "id": "4ad0b2a8-463d-406b-a1f6-f3b1d4dfc240",
+      "name": "notifications/initialized",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.MCP_BASE_URL + \"/mcp\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json, text/event-stream"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Mcp-Session-Id",
+              "value": "={{$node[\"Validate MCP Session\"].json[\"sessionId\"]}}"
+            },
+            {
+              "name": "X-API-KEY",
+              "value": "={{$env.MCP_API_KEY}}"
+            },
+            {
+              "name": "MCP-Protocol-Version",
+              "value": "2025-06-18"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  jsonrpc: \"2.0\",\n  id: 2,\n  method: \"tools/call\",\n  params: {\n    name: \"mcp_tasks\",\n    arguments: {\n      tasks: $items(\"Parse AI Tasks\").map(item => item.json.tasks).flat()\n    }\n  }\n}\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2320,
+        144
+      ],
+      "id": "3d0cd262-d14d-48e2-a364-a8506dbae905",
+      "name": "Insert Tasks into MCP"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.MCP_BASE_URL + \"/mcp\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-KEY",
+              "value": "={{$env.MCP_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json, text/event-stream"
+            },
+            {
+              "name": "MCP-Protocol-Version",
+              "value": "2025-06-18"
+            },
+            {
+              "name": "Mcp-Session-Id",
+              "value": "={{$node[\"Validate MCP Session\"].json[\"sessionId\"]}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  jsonrpc: \"2.0\",\n  id: 3,\n  method: \"tools/call\",\n  params: {\n    name: \"mcp_tasks_summary\",\n    arguments: {}\n  }\n}\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2512,
+        144
+      ],
+      "id": "5b7bf810-b991-4a45-b40b-595d7915f165",
+      "name": "Get Tasks Summary"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nfunction normalizeDate(value) {\n  if (!value) return null;\n  const s = String(value).trim();\n\n  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(s)) return s;\n\n  const m = s.match(/^(\\d{4}-\\d{2}-\\d{2})/);\n  if (m) return m[1];\n\n  return null;\n}\n\nfunction tryParseObject(text) {\n  try {\n    return JSON.parse(text);\n  } catch (_) {\n    try {\n      const fixed = text\n        .replace(/([{,]\\s*)([A-Za-z_][A-Za-z0-9_]*)(\\s*:)/g, '$1\"$2\"$3')\n        .replace(/,(\\s*})/g, '$1');\n\n      return JSON.parse(fixed);\n    } catch (_) {\n      return null;\n    }\n  }\n}\n\nconst output = [];\n\nfor (const [index, item] of items.entries()) {\n  const raw = String(item.json.response || \"\").trim();\n\n  if (!raw) {\n    output.push({\n      json: {\n        batchIndex: index,\n        batchCount: 0,\n        batchError: \"Empty Ollama response\",\n        tasks: []\n      }\n    });\n    continue;\n  }\n\n  let text = raw\n    .replace(/^```json\\s*/i, \"\")\n    .replace(/^```\\s*/i, \"\")\n    .replace(/```$/i, \"\")\n    .trim();\n\n  const matches = text.match(/\\{[^{}]*\\}/g);\n\n  if (!matches || matches.length === 0) {\n    output.push({\n      json: {\n        batchIndex: index,\n        batchCount: 0,\n        batchError: \"No object-like records found\",\n        tasks: []\n      }\n    });\n    continue;\n  }\n\n  const tasks = [];\n\n  for (const m of matches) {\n    const task = tryParseObject(m);\n    if (!task) continue;\n\n    const cleaned = {\n      title: String(task.title || \"\").trim(),\n      description: String(task.description || task.title || \"Generated task\").trim(),\n      status: String(task.status || \"\").trim().toUpperCase(),\n      priority: String(task.priority || \"\").trim().toUpperCase(),\n      dueDate: normalizeDate(task.dueDate)\n    };\n\n    if (\n      cleaned.title &&\n      cleaned.description &&\n      cleaned.dueDate &&\n      [\"OPEN\", \"IN_PROGRESS\", \"DONE\", \"BLOCKED\"].includes(cleaned.status) &&\n      [\"LOW\", \"MEDIUM\", \"HIGH\"].includes(cleaned.priority)\n    ) {\n      tasks.push(cleaned);\n    }\n  }\n\n  output.push({\n    json: {\n      batchIndex: index,\n      batchCount: tasks.length,\n      batchError: tasks.length === 0 ? \"No valid tasks parsed from this batch\" : null,\n      tasks\n    }\n  });\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        144
+      ],
+      "id": "400c10b9-6f52-4581-9b9e-2ae2c6ca367f",
+      "name": "Parse AI Tasks"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $json;\nconst headers = response.headers || {};\n\nconst sessionId =\n  headers[\"mcp-session-id\"] ||\n  headers[\"Mcp-Session-Id\"] ||\n  headers[\"MCP-Session-Id\"];\n\nif (!sessionId) {\n  throw new Error(\n    \"Initialize MCP succeeded but no mcp-session-id header was returned\"\n  );\n}\n\nreturn [\n  {\n    json: {\n      sessionId,\n      initializeResponse: response.body || response\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1936,
+        144
+      ],
+      "id": "ef1a22eb-823f-4e26-bee0-f0773bf13f99",
+      "name": "Validate MCP Session"
     }
   ],
   "pinData": {},
@@ -120,14 +270,14 @@
       "main": [
         [
           {
-            "node": "Create Batches From Request",
+            "node": "Create Batches",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Create Batches From Request": {
+    "Create Batches": {
       "main": [
         [
           {
@@ -149,7 +299,18 @@
         ]
       ]
     },
-    "Parse AI Tasks": {
+    "Initialize MCP": {
+      "main": [
+        [
+          {
+            "node": "Validate MCP Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notifications/initialized": {
       "main": [
         [
           {
@@ -164,14 +325,14 @@
       "main": [
         [
           {
-            "node": "Get MCP Summary",
+            "node": "Get Tasks Summary",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Get MCP Summary": {
+    "Get Tasks Summary": {
       "main": [
         [
           {
@@ -181,14 +342,36 @@
           }
         ]
       ]
+    },
+    "Parse AI Tasks": {
+      "main": [
+        [
+          {
+            "node": "Initialize MCP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate MCP Session": {
+      "main": [
+        [
+          {
+            "node": "notifications/initialized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "df20495f-06fd-45de-9401-95a0e253180f",
+  "versionId": "5e2f5919-bb24-4691-bae6-4174b98c97f9",
   "meta": {
     "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
   },

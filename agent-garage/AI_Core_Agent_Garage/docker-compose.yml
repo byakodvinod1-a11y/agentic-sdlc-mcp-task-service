@@ -26,6 +26,11 @@ x-n8n: &service-n8n
     - WEBHOOK_URL=http://n8n:5678
     - N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true
     - N8N_LOG_LEVEL=debug
+    - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+    - OLLAMA_BASE_URL=http://host.lima.internal:11434
+    - MCP_BASE_URL=http://host.lima.internal:8081
+    - MCP_API_KEY=testMe
+    - OLLAMA_MODEL=llama3.2
   env_file:
     - .env
 

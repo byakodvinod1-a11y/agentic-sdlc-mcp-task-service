@@ -1,18 +1,28 @@
 package org.acn.mcptaskservice.security;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Set;
 
 @Component
 public class ApiKeyFilter extends OncePerRequestFilter {
+
+    private static final Set<String> INVALID_VALUES = Set.of(
+            "change-me",
+            "changeme",
+            "your-secret-key",
+            "default",
+            "test",
+            "dummy"
+    );
 
     private final String apiKey;
 
@@ -24,6 +34,10 @@ public class ApiKeyFilter extends OncePerRequestFilter {
     void validateConfig() {
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException("app.api-key property is not set");
+        }
+
+        if (INVALID_VALUES.contains(apiKey.trim().toLowerCase())) {
+            throw new IllegalStateException("app.api-key must not use a placeholder/default value");
         }
     }
 

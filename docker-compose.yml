@@ -30,6 +30,8 @@ services:
       DB_USER: ${DB_USER:-app}
       DB_PASSWORD: ${DB_PASSWORD}
       MCP_API_KEY: ${MCP_API_KEY}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS}
+      SERVER_ADDRESS: ${SERVER_ADDRESS:-0.0.0.0}
     ports:
       - "8080:8080"
     depends_on:

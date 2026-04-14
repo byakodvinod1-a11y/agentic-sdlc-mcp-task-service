@@ -9,22 +9,27 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc(addFilters = false)
 @TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
+        "spring.datasource.url=jdbc:h2:mem:mcpprotocoldb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.datasource.username=sa",
         "spring.datasource.password=",
         "app.api-key=test-key"
 })
-class McpControllerTest {
+class McpProtocolControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -49,407 +54,209 @@ class McpControllerTest {
     }
 
     @Test
-    void helpEndpointWorks() throws Exception {
-        mockMvc.perform(get("/mcp/help"))
+    void initialize_shouldReturnJsonRpcResponseAndSessionHeader() throws Exception {
+        mockMvc.perform(post("/mcp")
+                        .header("Accept", "application/json, text/event-stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(initializeRequest()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tool").value("mcp-help"));
+                .andExpect(header().exists("Mcp-Session-Id"))
+                .andExpect(jsonPath("$.jsonrpc").value("2.0"))
+                .andExpect(jsonPath("$.result.protocolVersion").value("2025-06-18"))
+                .andExpect(jsonPath("$.result.capabilities.tools.listChanged").value(false));
     }
 
     @Test
-    void schemaEndpointWorks() throws Exception {
-        mockMvc.perform(get("/mcp/schema/tasks"))
+    void toolsList_shouldWorkAfterInitializeLifecycle() throws Exception {
+        String sessionId = initializedSession();
+
+        mockMvc.perform(post("/mcp")
+                        .header("Accept", "application/json, text/event-stream")
+                        .header("Mcp-Session-Id", sessionId)
+                        .header("MCP-Protocol-Version", "2025-06-18")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "jsonrpc": "2.0",
+                                  "id": 2,
+                                  "method": "tools/list",
+                                  "params": {}
+                                }
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tool").value("mcp-schema-tasks"));
+                .andExpect(jsonPath("$.result.tools[0].name").value("mcp_schema_tasks"))
+                .andExpect(jsonPath("$.result.tools[1].inputSchema.properties.tasks.type").value("array"));
     }
 
     @Test
-    void insertTasksWorks() throws Exception {
-        String body = """
-                [
-                  {
-                    "title": "Prepare test data",
-                    "description": "Create sample tasks",
-                    "status": "OPEN",
-                    "priority": "HIGH",
-                    "dueDate": "2026-04-05"
-                  },
-                  {
-                    "title": "Verify summary endpoint",
-                    "status": "DONE",
-                    "priority": "MEDIUM"
-                  }
-                ]
-                """;
+    void toolsCall_shouldInsertTasksUsingOfficialMcpShape() throws Exception {
+        String sessionId = initializedSession();
 
-        mockMvc.perform(post("/mcp/tasks")
+        mockMvc.perform(post("/mcp")
+                        .header("Accept", "application/json, text/event-stream")
+                        .header("Mcp-Session-Id", sessionId)
+                        .header("MCP-Protocol-Version", "2025-06-18")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
+                        .content("""
+                                {
+                                  "jsonrpc": "2.0",
+                                  "id": 3,
+                                  "method": "tools/call",
+                                  "params": {
+                                    "name": "mcp_tasks",
+                                    "arguments": {
+                                      "tasks": [
+                                        {
+                                          "title": "Official MCP Task",
+                                          "description": "created through tools/call",
+                                          "status": "OPEN",
+                                          "priority": "HIGH",
+                                          "dueDate": "2026-04-10"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.requested").value(2))
-                .andExpect(jsonPath("$.inserted").value(2))
-                .andExpect(jsonPath("$.errorSamples").isArray());
+                .andExpect(jsonPath("$.result.isError").value(false))
+                .andExpect(jsonPath("$.result.structuredContent.requested").value(1))
+                .andExpect(jsonPath("$.result.structuredContent.inserted").value(1));
     }
 
     @Test
-    void summaryEndpointWorks() throws Exception {
-        jdbcTemplate.update("INSERT INTO tasks(title, status, priority) VALUES ('A', 'OPEN', 'HIGH')");
-        jdbcTemplate.update("INSERT INTO tasks(title, status, priority) VALUES ('B', 'DONE', 'LOW')");
+    void normalOperations_shouldFailBeforeInitializedNotification() throws Exception {
+        String sessionId = initializeSession();
 
-        mockMvc.perform(get("/mcp/tasks/summary"))
+        mockMvc.perform(post("/mcp")
+                        .header("Accept", "application/json, text/event-stream")
+                        .header("Mcp-Session-Id", sessionId)
+                        .header("MCP-Protocol-Version", "2025-06-18")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "jsonrpc": "2.0",
+                                  "id": 2,
+                                  "method": "tools/list",
+                                  "params": {}
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.message", containsString("notifications/initialized")));
+    }
+
+    @Test
+    void getOnMcpEndpoint_shouldReturnMethodNotAllowedForBasicServer() throws Exception {
+        mockMvc.perform(get("/mcp")
+                        .header("Accept", "text/event-stream"))
+                .andExpect(status().isMethodNotAllowed());
+    }
+
+    @Test
+    void delete_shouldTerminateSession() throws Exception {
+        String sessionId = initializeSession();
+
+        mockMvc.perform(delete("/mcp")
+                        .header("Mcp-Session-Id", sessionId))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(delete("/mcp")
+                        .header("Mcp-Session-Id", sessionId))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void unknownSession_shouldReturnNotFound() throws Exception {
+        mockMvc.perform(post("/mcp")
+                        .header("Accept", "application/json, text/event-stream")
+                        .header("Mcp-Session-Id", "missing-session")
+                        .header("MCP-Protocol-Version", "2025-06-18")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "jsonrpc": "2.0",
+                                  "id": 2,
+                                  "method": "tools/list",
+                                  "params": {}
+                                }
+                                """))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void post_shouldRejectMissingSseInAcceptHeader() throws Exception {
+        mockMvc.perform(post("/mcp")
+                        .header("Accept", "application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(initializeRequest()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.message", containsString("Accept header")));
+    }
+
+    @Test
+    void serverShouldAcceptJsonRpcResponsesFromClient() throws Exception {
+        String sessionId = initializeSession();
+
+        mockMvc.perform(post("/mcp")
+                        .header("Accept", "application/json, text/event-stream")
+                        .header("Mcp-Session-Id", sessionId)
+                        .header("MCP-Protocol-Version", "2025-06-18")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "jsonrpc": "2.0",
+                                  "id": 99,
+                                  "result": {}
+                                }
+                                """))
+                .andExpect(status().isAccepted());
+    }
+
+    private String initializeSession() throws Exception {
+        MvcResult result = mockMvc.perform(post("/mcp")
+                        .header("Accept", "application/json, text/event-stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(initializeRequest()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.total").value(2))
-                .andExpect(jsonPath("$.byStatus.OPEN").value(1))
-                .andExpect(jsonPath("$.byStatus.DONE").value(1));
+                .andReturn();
+
+        String sessionId = result.getResponse().getHeader("Mcp-Session-Id");
+        assertNotNull(sessionId);
+        return sessionId;
     }
 
-    @Test
-    void insertTasks_shouldRejectBlankTitle() throws Exception {
-        String body = """
-                [
-                  {
-                    "title": "",
-                    "description": "Create sample tasks",
-                    "status": "OPEN",
-                    "priority": "HIGH",
-                    "dueDate": "2026-04-05"
-                  }
-                ]
-                """;
-
-        mockMvc.perform(post("/mcp/tasks")
+    private String initializedSession() throws Exception {
+        String sessionId = initializeSession();
+        mockMvc.perform(post("/mcp")
+                        .header("Accept", "application/json, text/event-stream")
+                        .header("Mcp-Session-Id", sessionId)
+                        .header("MCP-Protocol-Version", "2025-06-18")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").exists());
+                        .content("""
+                                {
+                                  "jsonrpc": "2.0",
+                                  "method": "notifications/initialized"
+                                }
+                                """))
+                .andExpect(status().isAccepted());
+        return sessionId;
     }
 
-    @Test
-    void insertTasks_shouldRejectInvalidStatus() throws Exception {
-        String body = """
-                [
-                  {
-                    "title": "Bad status task",
-                    "status": "STARTED",
-                    "priority": "HIGH",
-                    "dueDate": "2026-04-05"
-                  }
-                ]
-                """;
-
-        mockMvc.perform(post("/mcp/tasks")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").exists());
-    }
-
-    @Test
-    void insertTasks_shouldRejectInvalidPriority() throws Exception {
-        String body = """
-                [
-                  {
-                    "title": "Bad priority task",
-                    "status": "OPEN",
-                    "priority": "URGENT",
-                    "dueDate": "2026-04-05"
-                  }
-                ]
-                """;
-
-        mockMvc.perform(post("/mcp/tasks")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").exists());
-    }
-
-    @Test
-    void insertTasks_shouldRejectInvalidDueDate() throws Exception {
-        String body = """
-                [
-                  {
-                    "title": "Bad due date",
-                    "status": "OPEN",
-                    "priority": "HIGH",
-                    "dueDate": "05-04-2026"
-                  }
-                ]
-                """;
-
-        mockMvc.perform(post("/mcp/tasks")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").exists());
-    }
-
-    @Test
-    void insertTasks_shouldRejectMalformedJson() throws Exception {
-        String body = """
-                [
-                  {
-                    "title": "Broken JSON"
-                """;
-
-        mockMvc.perform(post("/mcp/tasks")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").exists());
-    }
-
-    @Test
-    void insertTasks_shouldRejectWhenTooManyTasksProvided() throws Exception {
-        StringBuilder body = new StringBuilder("[");
-        for (int i = 0; i < 5001; i++) {
-            if (i > 0) {
-                body.append(",");
-            }
-            body.append("""
-                    {
-                      "title": "Task %d",
-                      "status": "OPEN",
-                      "priority": "MEDIUM"
+    private String initializeRequest() {
+        return """
+                {
+                  "jsonrpc": "2.0",
+                  "id": 1,
+                  "method": "initialize",
+                  "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {
+                      "name": "test-client",
+                      "version": "1.0.0"
                     }
-                    """.formatted(i));
-        }
-        body.append("]");
-
-        mockMvc.perform(post("/mcp/tasks")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body.toString()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.requested").value(5001))
-                .andExpect(jsonPath("$.inserted").value(0))
-                .andExpect(jsonPath("$.errorSamples[0]").value("Too many tasks in one request. Max = 5000"));
-    }
-
-    @Test
-    void listTools_shouldReturnAvailableTools() throws Exception {
-        mockMvc.perform(post("/mcp/tools/list"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tool").value("tools/list"))
-                .andExpect(jsonPath("$.tools").isArray());
-    }
-
-    @Test
-    void callTool_shouldReturnSchemaForSchemaTool() throws Exception {
-        String body = """
-                {
-                  "name": "mcp-schema-tasks"
-                }
-                """;
-
-        mockMvc.perform(post("/mcp/tools/call")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tool").value("mcp-schema-tasks"));
-    }
-
-    @Test
-    void callTool_shouldReturnSummaryForSummaryTool() throws Exception {
-        jdbcTemplate.update("INSERT INTO tasks(title, status, priority) VALUES ('A', 'OPEN', 'HIGH')");
-        jdbcTemplate.update("INSERT INTO tasks(title, status, priority) VALUES ('B', 'DONE', 'LOW')");
-
-        String body = """
-                {
-                  "name": "mcp-tasks-summary"
-                }
-                """;
-
-        mockMvc.perform(post("/mcp/tools/call")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tool").value("mcp-tasks-summary"))
-                .andExpect(jsonPath("$.total").value(2))
-                .andExpect(jsonPath("$.byStatus.OPEN").value(1))
-                .andExpect(jsonPath("$.byStatus.DONE").value(1));
-    }
-
-    @Test
-    void callTool_shouldInsertTasksForMcpTasksTool() throws Exception {
-        String body = """
-                {
-                  "name": "mcp-tasks",
-                  "arguments": [
-                    {
-                      "title": "Task from tool call",
-                      "description": "Created via tool call",
-                      "status": "OPEN",
-                      "priority": "HIGH",
-                      "dueDate": "2026-04-05"
-                    }
-                  ]
-                }
-                """;
-
-        mockMvc.perform(post("/mcp/tools/call")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.requested").value(1))
-                .andExpect(jsonPath("$.inserted").value(1));
-    }
-
-    @Test
-    void callTool_shouldRejectUnknownTool() throws Exception {
-        String body = """
-                {
-                  "name": "unknown-tool"
-                }
-                """;
-
-        mockMvc.perform(post("/mcp/tools/call")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("Unknown tool: unknown-tool"));
-    }
-
-    @Test
-    void callTool_shouldRejectWhenArgumentsIsNotAList() throws Exception {
-        String body = """
-                {
-                  "name": "mcp-tasks",
-                  "arguments": {
-                    "title": "Not a list"
                   }
                 }
                 """;
-
-        mockMvc.perform(post("/mcp/tools/call")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("arguments must be a list of task objects"));
-    }
-
-    @Test
-    void callTool_shouldRejectInvalidDueDate() throws Exception {
-        String body = """
-                {
-                  "name": "mcp-tasks",
-                  "arguments": [
-                    {
-                      "title": "Bad due date in tool call",
-                      "status": "OPEN",
-                      "priority": "HIGH",
-                      "dueDate": "04/05/2026"
-                    }
-                  ]
-                }
-                """;
-
-        mockMvc.perform(post("/mcp/tools/call")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error", containsString("dueDate")));
-    }
-
-    @Test
-    void callTool_shouldRejectWhenTooManyTasksProvided() throws Exception {
-        StringBuilder body = new StringBuilder("""
-                {
-                  "name": "mcp-tasks",
-                  "arguments": [
-                """);
-
-        for (int i = 0; i < 5001; i++) {
-            if (i > 0) {
-                body.append(",");
-            }
-            body.append("""
-                    {
-                      "title": "Task %d",
-                      "status": "OPEN",
-                      "priority": "MEDIUM"
-                    }
-                    """.formatted(i));
-        }
-
-        body.append("]}");
-
-        mockMvc.perform(post("/mcp/tools/call")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body.toString()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.requested").value(5001))
-                .andExpect(jsonPath("$.inserted").value(0))
-                .andExpect(jsonPath("$.errorSamples[0]").value("Too many tasks in one request. Max = 5000"));
-    }
-
-    @Test
-    void callTool_shouldRejectBlankTitle() throws Exception {
-        String body = """
-                {
-                  "name": "mcp-tasks",
-                  "arguments": [
-                    {
-                      "title": "",
-                      "description": "test",
-                      "status": "OPEN",
-                      "priority": "MEDIUM",
-                      "dueDate": "2026-01-01"
-                    }
-                  ]
-                }
-                """;
-
-        mockMvc.perform(post("/mcp/tools/call")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error", containsString("title")));
-    }
-
-    @Test
-    void callTool_shouldRejectInvalidStatus() throws Exception {
-        String body = """
-                {
-                  "name": "mcp-tasks",
-                  "arguments": [
-                    {
-                      "title": "Example Task",
-                      "description": "test",
-                      "status": "INVALID",
-                      "priority": "MEDIUM",
-                      "dueDate": "2026-01-01"
-                    }
-                  ]
-                }
-                """;
-
-        mockMvc.perform(post("/mcp/tools/call")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error", containsString("status")));
-    }
-
-    @Test
-    void callTool_shouldRejectInvalidPriority() throws Exception {
-        String body = """
-                {
-                  "name": "mcp-tasks",
-                  "arguments": [
-                    {
-                      "title": "Example Task",
-                      "description": "test",
-                      "status": "OPEN",
-                      "priority": "URGENT",
-                      "dueDate": "2026-01-01"
-                    }
-                  ]
-                }
-                """;
-
-        mockMvc.perform(post("/mcp/tools/call")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error", containsString("priority")));
     }
 }

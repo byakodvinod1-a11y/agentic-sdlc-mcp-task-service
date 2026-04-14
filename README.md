@@ -1,57 +1,60 @@
-# Agentic SDLC Advanced Assignment
+# agentic-sdlc-mcp-task-service
 
 This repository implements the **Agentic SDLC Advanced Assignment** and contains the two required parts:
 
-1. **Minimal MCP-style Task Service (Spring Boot + PostgreSQL)** for AI-powered task data injection  
-2. **AgentGarage Workflow (n8n + Local LLM via Ollama)** for an SDLC automation use case
+1. **Official MCP Protocol Task Service (Spring Boot + PostgreSQL)** for AI-powered task data injection
+2. **Agentic workflow orchestration (n8n + local LLM via Ollama)** for an SDLC automation use case
+
+This version exposes an **official MCP server endpoint** using **JSON-RPC 2.0 over Streamable HTTP**, while preserving the original task-management use case and assignment flow.
 
 ---
 
-# 1. Assignment Goal
+## 1. Assignment Goal
 
-The objective of this project is to demonstrate an **AI-driven SDLC workflow** where:
+The objective of this project is to demonstrate an **AI-driven SDLC workflow** where an AI agent can:
 
-- an **AI agent** can inspect a task schema
-- generate realistic task records
-- insert them through an MCP-style service
+- inspect the task schema
+- generate realistic SDLC task records
+- insert them through the MCP service
 - validate the result in a PostgreSQL database
+- return the final result through a webhook-driven workflow
 
-In addition, the project includes an **AgentGarage / n8n workflow** that orchestrates the local LLM and the MCP service.
+In addition, the project includes **n8n workflows** that orchestrate the local LLM and the MCP service.
 
 ---
 
-# 2. High-Level Architecture
+## 2. High-Level Architecture
 
-## Overall Architecture
+### Overall Architecture
 
 ```text
-Webhook / Agent Trigger
+Manual Trigger / Webhook
         ↓
-      n8n
+       n8n
         ↓
-   Ollama (LLM)
+  Ollama (Local LLM)
         ↓
  Parse AI Output
         ↓
- Spring Boot MCP Service
+Official MCP Server (Spring Boot)
         ↓
-   PostgreSQL Database
+ PostgreSQL Database
 ```
 
-## MCP Service Architecture
+### MCP Service Architecture
 
 ```text
-AI Agent
-   ⇅
-Custom MCP-style Server (Spring Boot)
-   ⇅
-PostgreSQL
+AI Agent / n8n
+      ⇅
+Official MCP Server (Spring Boot)
+      ⇅
+ PostgreSQL
 ```
 
 The MCP service is not part of the main business application flow.  
 It acts as a **controlled AI-facing access layer** for schema inspection, data insertion, and summary retrieval.
 
-## AgentGarage Workflow Architecture
+### Agentic SDLC Workflow Architecture
 
 ```text
 Webhook
@@ -62,135 +65,137 @@ Generate Tasks with Ollama
   ↓
 Parse AI Tasks
   ↓
+Initialize MCP
+  ↓
+Validate MCP Session
+  ↓
+notifications/initialized
+  ↓
 Insert Tasks into MCP
   ↓
-Get MCP Summary
+Get Tasks Summary
   ↓
 Respond to Webhook
 ```
 
 ---
 
-# 3. Project Structure
+## 3. Official MCP Protocol Implementation
+
+This project exposes a single official MCP endpoint:
+
+```text
+POST   /mcp
+GET    /mcp
+DELETE /mcp
+```
+
+`/mcp` is used for:
+
+- initialization
+- lifecycle notifications
+- tool discovery
+- tool execution
+- session termination
+
+### Official MCP Pieces Included
+
+- JSON-RPC 2.0 request / response envelopes
+- MCP lifecycle support
+  - `initialize`
+  - `notifications/initialized`
+  - `ping`
+- MCP server tools support
+  - `tools/list`
+  - `tools/call`
+- Streamable HTTP MCP endpoint at `/mcp`
+- Session management via `Mcp-Session-Id`
+- Protocol negotiation using `MCP-Protocol-Version`
+- API key protection via `X-API-KEY`
+- Rate limiting via Bucket4j
+
+### Current Transport Behavior
+
+This implementation is a **valid minimal Streamable HTTP MCP server**.
+
+- `POST /mcp` handles JSON-RPC requests and notifications
+- `GET /mcp` currently returns **405 Method Not Allowed** because outbound SSE streaming is not implemented in this minimal version
+- `DELETE /mcp` closes a session when the client no longer needs it
+
+This keeps the implementation compliant for a minimal server while staying small and reviewable.
+
+---
+
+## 4. Tools Exposed by the MCP Server
+
+The MCP server exposes the following tools:
+
+- `mcp_schema_tasks` — returns the task insert schema and example payload
+- `mcp_tasks` — inserts task batches into PostgreSQL
+- `mcp_tasks_summary` — returns task totals and counts by status
+
+---
+
+## 5. Project Structure
 
 ```text
 agentic-sdlc-mcp-task-service/
-├── mcp-task-service/              # Spring Boot MCP application
-│   ├── src/
-│   ├── pom.xml
-│   └── ...
 ├── db/
-│   └── 001_init.sql              # PostgreSQL table creation
-├── docker-compose.yml            # Runs PostgreSQL and app service
+│   └── 001_init.sql
+├── docker-compose.yml
+├── Dockerfile
+├── README.md
 ├── agent-garage/
-│   └── AI_Core_Agent_Garage/     # AgentGarage / n8n setup
-├── generate_tasks.py             # Optional helper script used during testing
-└── README.md
+│   └── AI_Core_Agent_Garage/
+│       ├── .env
+│       └── workflows/
+├── mcp-task-service/
+│   ├── pom.xml
+│   ├── Dockerfile
+│   ├── src/
+│   │   ├── main/
+│   │   │   ├── java/org/acn/mcptaskservice/
+│   │   │   │   ├── controller/
+│   │   │   │   ├── dto/
+│   │   │   │   ├── exception/
+│   │   │   │   ├── mcp/
+│   │   │   │   ├── security/
+│   │   │   │   └── service/
+│   │   │   └── resources/application.yml
+│   │   └── test/
+│   └── target/
+└── n8n exported workflow json files
 ```
 
 ---
 
-# 4. Technology Stack
+## 6. Technology Stack
 
-## Backend / MCP
+### Backend / MCP
 
 - Java 21
-- Spring Boot
+- Spring Boot 3.3.5
 - Maven
-- PostgreSQL
-- Docker / docker-compose
+- Spring Web
+- Spring JDBC
+- Spring Validation
 - Spring Security
 - Spring Actuator
+- PostgreSQL
+- H2 for tests
+- Bucket4j
+- Docker / Docker Compose
 
-## Agent / Workflow
+### Agent / Workflow
 
 - n8n
 - Ollama
-- llama3.2
-- Local webhook-based orchestration
+- llama3.2 / llama3.2:latest
+- Webhook-based orchestration
 
 ---
 
-# 5. MCP Task Service
-
-## Objective
-
-Build a minimal MCP-style service that allows an AI agent to:
-
-- inspect the task schema
-- insert task records
-- retrieve summary statistics
-
-## MCP Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/mcp/help` | GET | Returns available MCP tools/endpoints |
-| `/mcp/schema/tasks` | GET | Returns simplified task schema |
-| `/mcp/tasks` | POST | Inserts task records |
-| `/mcp/tasks/summary` | GET | Returns task statistics by status |
-| `/actuator/health` | GET | Returns application health status |
-
-## MCP Endpoint Usage
-
-### Help
-
-```bash
-curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/help
-```
-
-### Schema
-
-```bash
-curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/schema/tasks
-```
-
-### Insert Tasks
-
-```bash
-curl -X POST http://localhost:8080/mcp/tasks   -H "Content-Type: application/json"   -H "X-API-KEY: your-secret-key"   -d '[{
-    "title":"Example Task",
-    "description":"Test task",
-    "status":"OPEN",
-    "priority":"MEDIUM",
-    "dueDate":"2026-01-01"
-  }]'
-```
-
-### Summary
-
-```bash
-curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/tasks/summary
-```
-
-### Health Check
-
-```bash
-curl http://localhost:8080/actuator/health
-```
-
-## Security
-
-Protected endpoints require:
-
-- Header: `X-API-KEY`
-- Value: your configured `MCP_API_KEY`
-
-Example:
-
-```bash
-curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/tasks/summary
-```
-
-The health endpoint is intentionally accessible without an API key:
-
-```bash
-curl http://localhost:8080/actuator/health
-```
-
----
-
-# 6. Database Schema
+## 7. Database Schema
 
 The `tasks` table includes:
 
@@ -202,20 +207,20 @@ The `tasks` table includes:
 - `due_date`
 - `created_at`
 
-## Allowed Status Values
+### Allowed Status Values
 
 - OPEN
 - IN_PROGRESS
 - DONE
 - BLOCKED
 
-## Allowed Priority Values
+### Allowed Priority Values
 
 - LOW
 - MEDIUM
 - HIGH
 
-## Validation Rules
+### Validation Rules
 
 - `title` is required
 - `title` max length is 140
@@ -223,13 +228,56 @@ The `tasks` table includes:
 - `status` must be one of the allowed status values
 - `priority` must be one of the allowed priority values
 - `dueDate` must be in `YYYY-MM-DD` format
-- Maximum batch size per request is `5000`
+- maximum batch size per request is `5000`
 
 ---
 
-# 7. How to Run the Project
+## 8. Configuration
 
-## Prerequisites
+### Environment Variables for Spring Boot
+
+Set the required environment variables before running the application:
+
+```bash
+export DB_URL=jdbc:postgresql://localhost:5432/taskdb
+export DB_USER=app
+export DB_PASSWORD=app
+export MCP_API_KEY=testMe
+export MCP_ALLOWED_ORIGINS=http://localhost,http://127.0.0.1
+export SERVER_ADDRESS=0.0.0.0
+```
+
+### Environment Variables for n8n / Agent Workflow
+
+Example values used in the working setup:
+
+```bash
+OLLAMA_BASE_URL=http://host.lima.internal:11434
+MCP_BASE_URL=http://host.lima.internal:8081
+MCP_API_KEY=testMe
+OLLAMA_MODEL=llama3.2:latest
+TOTAL_TASKS=1000
+BATCH_SIZE=10
+```
+
+> If your environment uses `host.docker.internal` instead of `host.lima.internal`, update both URLs accordingly.
+
+### application.yml Behavior
+
+The app resolves:
+
+- `spring.datasource.url` from `DB_URL`
+- `spring.datasource.username` from `DB_USER`
+- `spring.datasource.password` from `DB_PASSWORD`
+- `app.api-key` from `MCP_API_KEY`
+- `mcp.allowed-origins` from `MCP_ALLOWED_ORIGINS`
+- `server.address` from `SERVER_ADDRESS`
+
+---
+
+## 9. How to Run the Project
+
+### Prerequisites
 
 Make sure you have installed:
 
@@ -239,24 +287,15 @@ Make sure you have installed:
 - Ollama
 - n8n
 
-## Environment Variables
-
-Set the required environment variables before running the application:
-
-```bash
-export DB_URL=jdbc:postgresql://localhost:5432/taskdb
-export DB_USER=app
-export DB_PASSWORD=your-password
-export MCP_API_KEY=your-secret-key (app.api-key is resolved from MCP_API_KEY in application.yml)
-```
-
-## Step A — Start PostgreSQL
+### Step A — Start PostgreSQL
 
 From the project root:
 
 ```bash
-docker-compose up -d
+docker-compose up -d postgres
 ```
+
+If your local Docker supports the new syntax, `docker compose` also works.
 
 Verify the container is running:
 
@@ -264,36 +303,42 @@ Verify the container is running:
 docker ps
 ```
 
-## Step B — Run the MCP Service
+Expected postgres container for this project:
+
+```text
+mcp_tasks_postgres
+```
+
+### Step B — Run the MCP Service
 
 Go to the Spring Boot project folder:
 
 ```bash
 cd mcp-task-service
-mvn spring-boot:run
+MCP_API_KEY=testMe mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=8081
 ```
 
 The MCP service will be available at:
 
 ```text
-http://localhost:8080
+http://localhost:8081
 ```
 
-## Step C — Verify MCP Service
+> `8081` was used in the working setup because port `8080` was already occupied by Jira.
 
-Run:
+### Step C — Verify the MCP Service
 
 ```bash
-curl http://localhost:8080/actuator/health
-
-curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/help
-
-curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/schema/tasks
-
-curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/tasks/summary
+curl http://localhost:8081/actuator/health
 ```
 
-## Step D — Start Ollama
+Expected:
+
+```json
+{"status":"UP"}
+```
+
+### Step D — Start Ollama
 
 If Ollama is not already running:
 
@@ -313,12 +358,12 @@ Verify:
 curl http://localhost:11434/api/tags
 ```
 
-## Step E — Start n8n
+### Step E — Start n8n
 
-If installed locally:
+If using Docker:
 
 ```bash
-n8n
+docker-compose up -d n8n
 ```
 
 Open:
@@ -329,36 +374,382 @@ http://localhost:5678
 
 ---
 
-# 8. n8n Agent Workflow
+## 10. MCP Lifecycle Example
 
-## Purpose
+All MCP POST requests should include:
 
-The n8n workflow acts as the **AI agent orchestrator**.  
-It takes a webhook request, asks the local LLM to generate tasks, parses them, inserts them through MCP, and returns the final task summary.
+- `X-API-KEY: <your-key>`
+- `Accept: application/json, text/event-stream`
+- `Content-Type: application/json`
 
-## Workflow Steps
+After initialization, clients should also include:
 
-1. **Webhook** — receives request input  
-2. **Create Batches** — creates batch instructions (`batchCount`, `batchSize`)  
-3. **Generate Tasks with Ollama** — asks the local LLM for realistic tasks  
-4. **Parse AI Tasks** — extracts valid JSON tasks from LLM output  
-5. **Insert Tasks into MCP** — calls `/mcp/tasks`  
-6. **Get MCP Summary** — calls `/mcp/tasks/summary`  
-7. **Respond to Webhook** — returns final result
+- `Mcp-Session-Id: <session-id>`
+- `MCP-Protocol-Version: 2025-06-18`
 
----
-
-# 9. Agent Execution
-
-Once the webhook workflow is active, trigger it with:
+### 1) Initialize
 
 ```bash
-curl -X POST http://localhost:5678/webhook/agent/tasks   -H "Content-Type: application/json"   -d '{"batchCount":100,"batchSize":10}'
+curl -i -X POST http://localhost:8081/mcp \
+  -H "X-API-KEY: testMe" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2025-06-18",
+      "capabilities": {},
+      "clientInfo": {
+        "name": "demo-client",
+        "version": "1.0.0"
+      }
+    }
+  }'
+```
+
+The response returns a JSON-RPC result and an `Mcp-Session-Id` header.
+
+### 2) Send initialized notification
+
+```bash
+curl -i -X POST http://localhost:8081/mcp \
+  -H "X-API-KEY: testMe" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: <SESSION_ID>" \
+  -H "MCP-Protocol-Version: 2025-06-18" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "notifications/initialized"
+  }'
+```
+
+Expected response: `202 Accepted`
+
+### 3) List tools
+
+```bash
+curl -X POST http://localhost:8081/mcp \
+  -H "X-API-KEY: testMe" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: <SESSION_ID>" \
+  -H "MCP-Protocol-Version: 2025-06-18" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/list",
+    "params": {}
+  }'
+```
+
+### 4) Read task schema via tool call
+
+```bash
+curl -X POST http://localhost:8081/mcp \
+  -H "X-API-KEY: testMe" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: <SESSION_ID>" \
+  -H "MCP-Protocol-Version: 2025-06-18" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "mcp_schema_tasks",
+      "arguments": {}
+    }
+  }'
+```
+
+### 5) Insert tasks via tool call
+
+```bash
+curl -X POST http://localhost:8081/mcp \
+  -H "X-API-KEY: testMe" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: <SESSION_ID>" \
+  -H "MCP-Protocol-Version: 2025-06-18" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "mcp_tasks",
+      "arguments": {
+        "tasks": [
+          {
+            "title": "Prepare sprint planning notes",
+            "description": "Collect stories and priorities for next sprint.",
+            "status": "OPEN",
+            "priority": "HIGH",
+            "dueDate": "2026-04-10"
+          },
+          {
+            "title": "Review test coverage report",
+            "description": "Validate coverage before release.",
+            "status": "IN_PROGRESS",
+            "priority": "MEDIUM",
+            "dueDate": "2026-04-11"
+          }
+        ]
+      }
+    }
+  }'
+```
+
+### 6) Read summary
+
+```bash
+curl -X POST http://localhost:8081/mcp \
+  -H "X-API-KEY: testMe" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: <SESSION_ID>" \
+  -H "MCP-Protocol-Version: 2025-06-18" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "tools/call",
+    "params": {
+      "name": "mcp_tasks_summary",
+      "arguments": {}
+    }
+  }'
+```
+
+### 7) End session
+
+```bash
+curl -i -X DELETE http://localhost:8081/mcp \
+  -H "X-API-KEY: testMe" \
+  -H "Mcp-Session-Id: <SESSION_ID>"
 ```
 
 ---
 
-# 10. AI Generation Strategy
+## 11. Tool Contracts
+
+### `mcp_schema_tasks`
+
+Input:
+
+```json
+{}
+```
+
+Output:
+
+- schema metadata
+- insert payload schema
+- example payload
+
+### `mcp_tasks`
+
+Input:
+
+```json
+{
+  "tasks": [
+    {
+      "title": "string",
+      "description": "string",
+      "status": "OPEN|IN_PROGRESS|DONE|BLOCKED",
+      "priority": "LOW|MEDIUM|HIGH",
+      "dueDate": "YYYY-MM-DD"
+    }
+  ]
+}
+```
+
+Output shape in `structuredContent`:
+
+```json
+{
+  "requested": 2,
+  "inserted": 2,
+  "errors": 0,
+  "errorSamples": []
+}
+```
+
+### `mcp_tasks_summary`
+
+Input:
+
+```json
+{}
+```
+
+Output shape in `structuredContent`:
+
+```json
+{
+  "total": 2,
+  "byStatus": {
+    "OPEN": 1,
+    "IN_PROGRESS": 1
+  }
+}
+```
+
+---
+
+## 12. Security
+
+Protected MCP requests require:
+
+- Header: `X-API-KEY`
+- Value: your configured `MCP_API_KEY`
+
+The health endpoint is intentionally accessible without an API key:
+
+```bash
+curl http://localhost:8081/actuator/health
+```
+
+Additional protections:
+
+- session enforcement after initialization
+- protocol version enforcement
+- rate limiting via Bucket4j
+
+---
+
+## 13. Testing
+
+Run the full test suite with:
+
+```bash
+cd mcp-task-service
+mvn clean test
+```
+
+The test suite covers:
+
+- initialize flow
+- initialized notification requirement
+- tools/list
+- tools/call
+- unknown session handling
+- Accept header validation
+- security smoke tests
+- schema service tests
+- task service tests
+- exception handler tests
+
+---
+
+## 14. n8n Workflows
+
+### 14.1 AI Task Generator (MCP)
+
+This workflow uses a **manual trigger** and is the main proof-of-capability flow.
+
+#### Flow
+
+```text
+Manual Trigger
+  ↓
+Create Batches
+  ↓
+Generate Tasks with Ollama
+  ↓
+Parse AI Tasks
+  ↓
+Initialize MCP
+  ↓
+Validate MCP Session
+  ↓
+notifications/initialized
+  ↓
+Insert Tasks into MCP
+  ↓
+Get Tasks Summary
+```
+
+#### Notes
+
+- Uses `TOTAL_TASKS` and `BATCH_SIZE` from env
+- Uses robust parsing for slightly malformed Ollama output
+- Uses validated session id from `Validate MCP Session`
+- Inserts all parsed tasks with:
+
+```javascript
+$items("Parse AI Tasks").map(item => item.json.tasks).flat()
+```
+
+### 14.2 Agentic SDLC Workflow
+
+This workflow uses a **webhook trigger** and returns the final result through `Respond to Webhook`.
+
+#### Flow
+
+```text
+Webhook
+  ↓
+Create Batches
+  ↓
+Generate Tasks with Ollama
+  ↓
+Parse AI Tasks
+  ↓
+Initialize MCP
+  ↓
+Validate MCP Session
+  ↓
+notifications/initialized
+  ↓
+Insert Tasks into MCP
+  ↓
+Get Tasks Summary
+  ↓
+Respond to Webhook
+```
+
+#### Webhook URL
+
+Production:
+
+```text
+POST http://localhost:5678/webhook/agent/tasks
+```
+
+Test mode:
+
+```text
+POST http://localhost:5678/webhook-test/agent/tasks
+```
+
+> In the newer n8n UI, the workflow must be **Published** before the production webhook URL is registered.
+
+---
+
+## 15. Triggering the Agentic Workflow
+
+### Production webhook
+
+After publishing the workflow:
+
+```bash
+curl -X POST http://localhost:5678/webhook/agent/tasks
+```
+
+### Test webhook
+
+When n8n shows **Waiting for you to call the Test URL**:
+
+```bash
+curl -X POST http://localhost:5678/webhook-test/agent/tasks
+```
+
+---
+
+## 16. AI Generation Strategy
 
 The local LLM was used to generate **realistic SDLC-related task records**, such as:
 
@@ -383,150 +774,151 @@ This ensures the generated data is not inserted blindly.
 
 ---
 
-# 11. Validation and Final Result
+## 17. Validation and Final Result
 
-The final dataset was validated using:
+The final dataset was validated using the MCP summary tool and direct database verification.
 
-```bash
-curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/tasks/summary
-```
-
-and direct database verification:
+### Example direct database verification
 
 ```bash
 docker-compose exec postgres psql -U app -d taskdb -c "SELECT COUNT(*) FROM tasks;"
 ```
 
-## Final Result
+### Working run result
 
-- Total tasks created: **1000**
-- Data stored successfully in PostgreSQL
-- Inserted through MCP-style API
-- Generated through AI-assisted workflow
+A successful working run inserted **998** tasks from one AI execution because **2 malformed / invalid AI records were filtered by the parser before insertion**.
 
-## Final Summary Output
+Example successful MCP insert result:
 
 ```json
 {
-  "specVersion": "2025-06-18",
-  "tool": "mcp-tasks-summary",
+  "requested": 998,
+  "inserted": 998,
+  "errors": 0,
+  "errorSamples": []
+}
+```
+
+Example successful summary result from the same run:
+
+```json
+{
   "total": 1000,
   "byStatus": {
-    "OPEN": 344,
-    "IN_PROGRESS": 236,
-    "DONE": 199,
-    "BLOCKED": 221
+    "BLOCKED": 207,
+    "DONE": 60,
+    "IN_PROGRESS": 340,
+    "OPEN": 393
   }
 }
 ```
 
+> The total can be cumulative if the database already contains tasks from previous runs.
+
 ---
 
-# 12. Assignment Requirements Covered
+## 18. Assignment Requirements Covered
 
-## MCP Service
+### MCP Service
 
 - MCP tool is running and accessible
-- Schema inspection works
-- Task insertion works
-- Summary endpoint works
+- schema inspection works
+- task insertion works
+- summary retrieval works
 - PostgreSQL integration works
 - API key protection is implemented
-- Health check endpoint is available
+- health check endpoint is available
 
-## AI Agent Integration
+### AI Agent Integration
 
-- AI inspects the schema
+- AI inspects schema
 - AI generates realistic tasks
 - AI inserts tasks through MCP
-- AI validates success through summary endpoint
+- AI validates success through summary
 
-## AgentGarage
+### Agentic Workflow
 
-- Local LLM setup completed
+- local LLM setup completed
 - n8n workflow created
-- At least one API request to local LLM
-- Traceable input/output via webhook
+- local LLM API call implemented
+- traceable input/output via manual trigger and webhook
 - SDLC-related use case implemented
 
 ---
 
-# 13. Tests
+## 19. Compliance Notes
 
-Run the full test suite with:
+This project is designed to be **officially MCP-compliant for a minimal Streamable HTTP server**.
 
-```bash
-mvn clean test
-```
+What it intentionally does **not** implement yet:
 
-The test suite covers:
+- SSE streaming responses on `GET /mcp`
+- server-initiated notifications / requests
+- prompts
+- resources
+- OAuth authorization flow
 
-- service logic
-- schema generation
-- exception handling
-- controller behavior
-- security smoke tests
+Those are useful extensions, but they are not required to make this a valid minimal MCP server with tools support.
 
 ---
 
-# 14. Notes
+## 20. Sample Agent Prompt
 
-- During testing, smaller batches were used first to stabilize the local LLM output.
-- The final 1000-task target was reached through repeated AI-driven batch execution.
-- Some parser normalization was added to handle imperfect LLM JSON formatting.
-- This implementation is **MCP-style / MCP-inspired**, not a full JSON-RPC MCP protocol server.
+The following style of prompt was used by the AI workflow:
 
----
-
-# 15. Sample Agent Prompt
-
-The following prompt was used by the AI agent:
-
-> Please inspect the task schema at `/mcp/schema/tasks`. Then generate and insert 1000 diverse tasks with random statuses, titles, and due dates using the `/mcp/tasks` endpoint.
+> Generate realistic SDLC task records with valid title, description, status, priority, and dueDate fields. Insert them through MCP and then validate the result using the summary tool.
 
 The agent workflow performed the following steps:
 
-1. Inspect schema using `/mcp/schema/tasks`
-2. Generate realistic SDLC task data
-3. Insert tasks using `/mcp/tasks`
-4. Validate results using `/mcp/tasks/summary`
+1. Generate realistic SDLC task data
+2. Parse and validate the output
+3. Insert tasks through MCP
+4. Validate results through summary
 
 This confirms end-to-end AI-driven task generation and database insertion.
 
 ---
 
-# 16. Screenshots
+## 21. Screenshots
 
-## 16.1 Agentic SDLC Workflow
 
-![Agentic SDLC Workflow](image-1.png)
+- MCP service running 
+![alt text](image.png)
+- n8n AI Task Generator workflow
+![AI Task Generator](AI Task Generator (MCP).png)
+- n8n Agentic SDLC Workflow
+![Agentic SDLC Workflow](Agentic SDLC Workflow.png)
+- successful initialize / session flow
+![alt text](image-2.png)
+- successful insert response
+![alt text](image-3.png)
+- successful summary response
+![Task Generator (MCP) Summary](Task Generator (MCP) Summary.png)
+- webhook response
+![alt text](image-4.png)
+![Agentic SDLC Workflow Summary.png](Agentic SDLC Workflow Summary.png)
+- PostgreSQL verification
+![alt text](image-5.png)
 
-## 16.2 AI Task Generator (MCP)
 
-![AI Task Generator (MCP)](image.png)
-
-## 16.3 Tasks Summary
-
-```bash
-curl -H "X-API-KEY: your-secret-key"   http://localhost:8080/mcp/tasks/summary
-```
-
-```json
-{
-  "total": 1000,
-  "byStatus": {
-    "OPEN": 344,
-    "IN_PROGRESS": 236,
-    "DONE": 199,
-    "BLOCKED": 221
-  }
-}
-```
-
-![Tasks Summary](image-2.png)
 
 ---
 
-# 17. Author
+## 22. Deliverable Summary
+
+This repository now provides:
+
+- a single MCP endpoint at `/mcp`
+- official JSON-RPC 2.0 request format
+- lifecycle management
+- protocol version negotiation
+- session management
+- tool discovery and tool execution
+- PostgreSQL-backed task insertion and summary validation
+- n8n workflow integration with local LLM
+
+---
+
+## 23. Author
 
 **Vinod Byakod**

@@ -1,4 +1,5 @@
 server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
   port: 8080
 
 spring:
@@ -17,3 +18,9 @@ management:
 logging:
   level:
     root: INFO
+
+app:
+  api-key: ${MCP_API_KEY}
+
+mcp:
+  allowed-origins: ${MCP_ALLOWED_ORIGINS:http://localhost,http://127.0.0.1}
